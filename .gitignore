@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.build/
+build/
+dist/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.python-version
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+.env
+.env.*
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Project outputs
+outputs/
+runs/
