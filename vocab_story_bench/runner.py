@@ -71,23 +71,34 @@ def run_benchmark(
     summary_csv_path = out_dir / "summary.csv"
 
     per_model_records: Dict[str, List[TrialResult]] = {}
+    skipped_models: List[str] = []
 
     for spec in models:
         provider_cls = PROVIDERS.get(spec.provider)
         if not provider_cls:
-            raise ValueError(f"Unknown provider: {spec.provider}")
-        provider = provider_cls()
+            skipped_models.append(f"{spec.display_label} (unknown provider)")
+            continue
+        try:
+            provider = provider_cls()
+        except Exception as e:  # missing API key or other init failure
+            skipped_models.append(f"{spec.display_label} ({e})")
+            continue
 
         system, user = build_prompt(language, vocabulary, target_words, desired_length_words)
 
         model_results: List[TrialResult] = []
         for trial in tqdm(range(trials), desc=f"{spec.display_label}"):
-            story = provider.generate(
-                spec.model,
-                system=system,
-                user=user,
-                max_output_tokens=max(128, desired_length_words * 3),
-            )
+            try:
+                story = provider.generate(
+                    spec.model,
+                    system=system,
+                    user=user,
+                    max_output_tokens=max(64, desired_length_words * 2),
+                )
+            except Exception as e:
+                skipped_models.append(f"{spec.display_label} trial {trial} ({e})")
+                continue
+
             val = validate_story(story, vocabulary, target_words)
             tr = TrialResult(
                 model_label=spec.display_label,
@@ -135,11 +146,16 @@ def run_benchmark(
             }
         )
 
-    write_json(summary_path, summary_rows)
-    write_csv(summary_csv_path, summary_rows)
+    write_json(summary_path, {
+        "summary": summary_rows,
+        "skipped_models": skipped_models,
+    })
+    if summary_rows:
+        write_csv(summary_csv_path, summary_rows)
 
     return {
         "output_dir": str(out_dir),
         "summary": summary_rows,
         "details": str(details_path),
+        "skipped_models": skipped_models,
     }

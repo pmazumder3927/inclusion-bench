@@ -32,3 +32,5 @@ venv/
 # Project outputs
 outputs/
 runs/
+
+data/

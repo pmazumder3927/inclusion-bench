@@ -7,3 +7,4 @@ tqdm>=4.66.0
 tenacity>=8.2.3
 regex>=2024.5.15
 python-dotenv>=1.0.1
+plotly>=5.22.0
