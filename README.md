@@ -5,6 +5,7 @@ Benchmark LLMs on a strict lexical control task: given a vocabulary (e.g., the t
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 
 ### Table of contents
+
 - Quickstart
 - Data: frequency lists → vocab files
 - Running benchmarks (single and batch)
@@ -15,7 +16,8 @@ Benchmark LLMs on a strict lexical control task: given a vocabulary (e.g., the t
 - License
 
 ### Quickstart
-1) Create a virtualenv and install deps
+
+1. Create a virtualenv and install deps
 
 ```bash
 python -m venv .venv
@@ -23,14 +25,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2) Set API keys (copy `.env.example` → `.env` and fill, or export env vars)
+2. Set API keys (copy `.env.example` → `.env` and fill, or export env vars)
 
 ```bash
 cp .env.example .env
 # then edit .env to add your keys
 ```
 
-3) Fetch vocab data and run a demo
+3. Fetch vocab data and run a demo
 
 ```bash
 # Fetch frequency lists and build top-N vocab
@@ -50,6 +52,7 @@ python -m vocab_story_bench.cli run \
 ```
 
 ### Data: frequency lists → vocab files
+
 We use the HermitDave OpenSubtitles 2018 frequency lists and convert them into top-N vocabulary files. The `fetch` command handles download and conversion. Language codes are standard ISO (e.g., `en`, `es`, `fr`, …). Note: `zh` maps to Simplified Chinese (`zh_cn`).
 
 ```bash
@@ -62,6 +65,7 @@ python -m vocab_story_bench.cli fetch \
 This produces files like `data/vocab/top/en_top2000.txt` (one token per line).
 
 ### Running benchmarks
+
 You can run a single benchmark or a batch across multiple languages and vocab sizes.
 
 - Single run (inline models example):
@@ -102,6 +106,7 @@ python -m vocab_story_bench.cli overall \
 ```
 
 ### Models configuration
+
 You can specify models inline (e.g., `openai:gpt-4.1`) or via a YAML file. See `configs/models.yaml` for examples across OpenAI, Anthropic, and OpenRouter providers. Labels are optional and used for display.
 
 ```yaml
@@ -120,6 +125,7 @@ models:
 OpenAI models can also be auto-discovered by prefix using `--openai-prefixes gpt-5 gpt-4.1`.
 
 ### API keys
+
 Put keys in a `.env` file (recommended) or export as environment variables:
 
 ```bash
@@ -131,7 +137,9 @@ OPENROUTER_X_TITLE=Vocab Story Benchmark
 ```
 
 ### Outputs and dashboards
+
 Each run directory contains:
+
 - `summary.json` and `summary.csv`: per-model pass rates and averages
 - `details.jsonl`: trial-level stories and validation info
 - For batch runs: `dashboard.html` with interactive plots
@@ -139,6 +147,7 @@ Each run directory contains:
 Columns in `summary.csv` include `model`, `trials`, `pass_rate`, `avg_oov_types`, `avg_missing_targets`. Batch/overall dashboards visualize pass rate by model/language, OOV vs missing targets, and pass rate vs vocab size.
 
 ### Validation rules
+
 - Tokenization is Unicode-aware and treats punctuation and hyphens as separators.
 - Text is normalized using NFKC and lowercased.
 - A story passes only if it uses only vocabulary words and includes all target words exactly as standalone tokens.
@@ -146,10 +155,12 @@ Columns in `summary.csv` include `model`, `trials`, `pass_rate`, `avg_oov_types`
 See `vocab_story_bench/validator.py` for details.
 
 ### Troubleshooting
+
 - Missing API key: providers will raise errors like `OPENAI_API_KEY is not set`. Ensure `.env` is loaded (we auto-load via `python-dotenv`).
 - OpenRouter headers: set `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` if required by your account/org policy.
 - HTTP 429 / rate limits: reduce `--trials`, remove high-cost models, or retry later.
 - Empty dashboards: ensure your run directories contain `summary.json` files.
 
 ### License
+
 MIT
