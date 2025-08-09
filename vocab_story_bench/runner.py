@@ -6,9 +6,12 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 import yaml
 from tqdm import tqdm
+from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from .model_spec import ModelSpec
 from .prompt import build_prompt
@@ -63,6 +66,7 @@ def run_benchmark(
     desired_length_words: int,
     trials: int,
     output_dir: str | Path,
+    max_workers: int | None = None,
 ) -> Dict[str, any]:
     ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = ensure_dir(output_dir or f"outputs/{ts}")
@@ -73,22 +77,24 @@ def run_benchmark(
 
     per_model_records: Dict[str, List[TrialResult]] = {}
     skipped_models: List[str] = []
+    details_lock = Lock()
 
-    for spec in models:
+    def run_single_model(spec: ModelSpec, task_id: int, progress: Progress) -> tuple[str, List[TrialResult], List[str]]:
+        local_skipped: List[str] = []
         provider_cls = PROVIDERS.get(spec.provider)
         if not provider_cls:
-            skipped_models.append(f"{spec.display_label} (unknown provider)")
-            continue
+            local_skipped.append(f"{spec.display_label} (unknown provider)")
+            return spec.display_label, [], local_skipped
         try:
             provider = provider_cls()
         except Exception as e:  # missing API key or other init failure
-            skipped_models.append(f"{spec.display_label} ({e})")
-            continue
+            local_skipped.append(f"{spec.display_label} ({e})")
+            return spec.display_label, [], local_skipped
 
         system, user = build_prompt(language, vocabulary, target_words, desired_length_words)
 
         model_results: List[TrialResult] = []
-        for trial in tqdm(range(trials), desc=f"{spec.display_label}"):
+        for trial in range(trials):
             try:
                 story = provider.generate(
                     spec.model,
@@ -98,7 +104,8 @@ def run_benchmark(
                     params=spec.params or {},
                 )
             except Exception as e:
-                skipped_models.append(f"{spec.display_label} trial {trial} ({e})")
+                local_skipped.append(f"{spec.display_label} trial {trial} ({e})")
+                progress.advance(task_id, 1)
                 continue
 
             val = validate_story(story, vocabulary, target_words)
@@ -112,24 +119,46 @@ def run_benchmark(
             )
             model_results.append(tr)
 
-            append_jsonl(
-                details_path,
-                {
-                    "model": spec.display_label,
-                    "provider": spec.provider,
-                    "trial": trial,
-                    "story": story,
-                    "validation": {
-                        "only_vocab": val.only_vocab,
-                        "all_targets_present": val.all_targets_present,
-                        "oov_words": sorted(val.oov_words),
-                        "missing_targets": sorted(val.missing_targets),
-                        "total_tokens": val.total_tokens,
+            with details_lock:
+                append_jsonl(
+                    details_path,
+                    {
+                        "model": spec.display_label,
+                        "provider": spec.provider,
+                        "trial": trial,
+                        "story": story,
+                        "validation": {
+                            "only_vocab": val.only_vocab,
+                            "all_targets_present": val.all_targets_present,
+                            "oov_words": sorted(val.oov_words),
+                            "missing_targets": sorted(val.missing_targets),
+                            "total_tokens": val.total_tokens,
+                        },
                     },
-                },
-            )
+                )
+            progress.advance(task_id, 1)
+        return spec.display_label, model_results, local_skipped
 
-        per_model_records[spec.display_label] = model_results
+    progress = Progress(
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        TextColumn("ETA"),
+        TimeRemainingColumn(),
+    )
+    task_map: Dict[str, int] = {}
+    with progress:
+        for spec in models:
+            task_map[spec.display_label] = progress.add_task(spec.display_label, total=trials)
+
+        pool_size = max_workers or min(8, max(1, len(models)))
+        with ThreadPoolExecutor(max_workers=pool_size) as ex:
+            futures = [ex.submit(run_single_model, spec, task_map[spec.display_label], progress) for spec in models]
+            for fut in as_completed(futures):
+                label, results, local_skipped = fut.result()
+                per_model_records[label] = results
+                skipped_models.extend(local_skipped)
 
     # Aggregate summary
     summary_rows = []

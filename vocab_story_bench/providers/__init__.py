@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from typing import Dict
 
-from .openai_provider import OpenAIProvider
-from .anthropic_provider import AnthropicProvider
-from .openrouter_provider import OpenRouterProvider
+PROVIDERS: Dict[str, type] = {}
 
-PROVIDERS: Dict[str, type] = {
-    "openai": OpenAIProvider,
-    "anthropic": AnthropicProvider,
-    "openrouter": OpenRouterProvider,
-}
+# Structured providers
+try:
+    from .structured_openai import StructuredOpenAIProvider
+    PROVIDERS["openai"] = StructuredOpenAIProvider
+except Exception:
+    pass
+
+try:
+    from .structured_anthropic import StructuredAnthropicProvider
+    PROVIDERS["anthropic"] = StructuredAnthropicProvider
+except Exception:
+    pass

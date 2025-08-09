@@ -1,166 +1,239 @@
-## Vocab-Only Story Benchmark
+# Vocabulary Inclusion Benchmark
 
-Benchmark LLMs on a strict lexical control task: given a vocabulary (e.g., the top 500–5000 words of a language), write a short story that uses only words from that vocabulary and must include a set of target words.
+A beautiful, high-performance benchmark for testing language models with vocabulary constraints. Models generate structured outputs (word arrays) for precise validation of vocabulary inclusion/exclusion.
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
+## Features
 
-### Table of contents
+- **Structured Output**: Models generate JSON arrays of words for precise validation
+- **Parallel Execution**: Run benchmarks across multiple languages and models simultaneously  
+- **Beautiful CLI**: Interactive mode with rich formatting and real-time progress tracking
+- **Multi-Provider Support**: OpenAI (GPT-5, GPT-4) and Anthropic (Claude) models
+- **Comprehensive Metrics**: Pass rates, vocabulary coverage, execution times, and more
 
-- Quickstart
-- Data: frequency lists → vocab files
-- Running benchmarks (single and batch)
-- Models configuration
-- Outputs and dashboards
-- Validation rules
-- Troubleshooting
-- License
-
-### Quickstart
-
-1. Create a virtualenv and install deps
+## Installation
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/yourusername/inclusion-bench.git
+cd inclusion-bench
 pip install -r requirements.txt
 ```
 
-2. Set API keys (copy `.env.example` → `.env` and fill, or export env vars)
+## Quick Start
+
+### Interactive Mode (Recommended)
+
+The easiest way to run benchmarks:
 
 ```bash
-cp .env.example .env
-# then edit .env to add your keys
+python -m vocab_story_bench --interactive
 ```
 
-3. Fetch vocab data and run a demo
+This will guide you through:
+1. Language selection (or 'all' for all 12 languages)
+2. Vocabulary size configuration (1000, 2000, 3000, etc.)
+3. Model selection (from config or manual entry)
+4. Target word configuration (automatically selected from each language's vocabulary)
+5. Benchmark execution with live progress
+
+### Command Line Mode
 
 ```bash
-# Fetch frequency lists and build top-N vocab
-python -m vocab_story_bench.cli fetch \
-  --langs en es fr de it pt ru zh ja ko ar hi \
-  --top 3000 \
-  --data-dir data/vocab
+# Fetch vocabulary data for all languages
+python -m vocab_story_bench fetch --langs all --top 3000
 
-# Run a single benchmark over multiple models from YAML
-python -m vocab_story_bench.cli run \
-  --vocab-file data/vocab/top/en_top3000.txt \
-  --targets hope river child smile stone \
+# Or fetch specific languages
+python -m vocab_story_bench fetch --langs en es fr --top 3000
+
+# Run benchmark with automatic target selection
+python -m vocab_story_bench run \
+  --languages en es fr \
+  --vocab-sizes 1000 2000 \
   --models-config configs/models.yaml \
-  --story-words 180 \
-  --trials 3 \
-  --output-dir runs/demo
+  --num-targets 5 \
+  --trials 3
+
+# Run benchmark for all languages
+python -m vocab_story_bench run \
+  --languages all \
+  --vocab-sizes 1000 \
+  --models-config configs/models.yaml
 ```
 
-### Data: frequency lists → vocab files
+## Configuration
 
-We use the HermitDave OpenSubtitles 2018 frequency lists and convert them into top-N vocabulary files. The `fetch` command handles download and conversion. Language codes are standard ISO (e.g., `en`, `es`, `fr`, …). Note: `zh` maps to Simplified Chinese (`zh_cn`).
-
-```bash
-python -m vocab_story_bench.cli fetch \
-  --langs en es fr de it pt ru zh ja ko ar hi \
-  --top 2000 \
-  --data-dir data/vocab
-```
-
-This produces files like `data/vocab/top/en_top2000.txt` (one token per line).
-
-### Running benchmarks
-
-You can run a single benchmark or a batch across multiple languages and vocab sizes.
-
-- Single run (inline models example):
-
-```bash
-python -m vocab_story_bench.cli run \
-  --vocab-file data/vocab/top/en_top2000.txt \
-  --targets river child stone \
-  --models openai:gpt-4.1 anthropic:claude-sonnet-4-20250514 openrouter:qwen/qwen3-14b \
-  --story-words 150 \
-  --trials 2 \
-  --output-dir runs/en_top2000_demo
-```
-
-- Batch runs with dashboard:
-
-```bash
-python -m vocab_story_bench.cli batch \
-  --langs en es \
-  --sizes 1000 2000 3000 \
-  --data-dir data/vocab \
-  --targets hope river child smile stone \
-  --language-label English \
-  --models-config configs/models.yaml \
-  --story-words 150 \
-  --trials 1 \
-  --out-root runs/batch_demo
-```
-
-An interactive Plotly dashboard will be saved to `runs/batch_demo/dashboard.html`.
-
-- Build an overall dashboard across multiple run roots:
-
-```bash
-python -m vocab_story_bench.cli overall \
-  --roots runs/full_en runs/full_es runs/full_de \
-  --out runs/overall_dashboard.html
-```
-
-### Models configuration
-
-You can specify models inline (e.g., `openai:gpt-4.1`) or via a YAML file. See `configs/models.yaml` for examples across OpenAI, Anthropic, and OpenRouter providers. Labels are optional and used for display.
+### Models Configuration (configs/models.yaml)
 
 ```yaml
 models:
   - provider: openai
     model: gpt-5
     label: gpt5
+    params:
+      reasoning_effort: medium
+      temperature: 0.7
+  
   - provider: anthropic
-    model: claude-sonnet-4-20250514
-    label: claude-sonnet-4
-  - provider: openrouter
-    model: qwen/qwen3-14b
-    label: qwen3-14b
+    model: claude-3-5-sonnet-20241022
+    label: claude-3.5-sonnet
+    params:
+      temperature: 0.7
 ```
 
-OpenAI models can also be auto-discovered by prefix using `--openai-prefixes gpt-5 gpt-4.1`.
-
-### API keys
-
-Put keys in a `.env` file (recommended) or export as environment variables:
+### Environment Variables (.env)
 
 ```bash
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
-OPENROUTER_API_KEY=...
-OPENROUTER_HTTP_REFERER=https://example.com
-OPENROUTER_X_TITLE=Vocab Story Benchmark
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### Outputs and dashboards
+## How It Works
 
-Each run directory contains:
+1. **Vocabulary Constraints**: Models receive a limited vocabulary list and must generate stories using only those words
+2. **Target Words**: Automatically selected from each language's vocabulary (5 words by default from the middle range of frequency)
+3. **Structured Output**: Models generate JSON arrays of words: `{"words": ["the", "child", "found", "..."]}`
+4. **Validation**: Each word is validated against the vocabulary and target requirements
+5. **Parallel Processing**: Multiple models and languages are tested simultaneously for efficiency
+6. **Language Support**: 12 languages supported (en, es, fr, de, it, pt, ru, zh, ja, ko, ar, hi)
 
-- `summary.json` and `summary.csv`: per-model pass rates and averages
-- `details.jsonl`: trial-level stories and validation info
-- For batch runs: `dashboard.html` with interactive plots
+## Output Format
 
-Columns in `summary.csv` include `model`, `trials`, `pass_rate`, `avg_oov_types`, `avg_missing_targets`. Batch/overall dashboards visualize pass rate by model/language, OOV vs missing targets, and pass rate vs vocab size.
+### Results Directory Structure
+```
+outputs/parallel_20240809_143022/
+├── details.jsonl          # Detailed trial results
+├── summary.json           # Aggregated statistics
+└── dashboard.html         # Visual dashboard
+```
 
-### Validation rules
+### Trial Result Example
+```json
+{
+  "model_label": "gpt5",
+  "language": "en",
+  "vocab_size": 1000,
+  "trial_index": 0,
+  "words": ["the", "child", "found", "a", "stone", "by", "the", "river"],
+  "validation": {
+    "only_vocab": true,
+    "all_targets_present": true,
+    "vocabulary_coverage": 0.85,
+    "total_words": 150
+  },
+  "execution_time": 2.3,
+  "success": true
+}
+```
 
-- Tokenization is Unicode-aware and treats punctuation and hyphens as separators.
-- Text is normalized using NFKC and lowercased.
-- A story passes only if it uses only vocabulary words and includes all target words exactly as standalone tokens.
+## Metrics
 
-See `vocab_story_bench/validator.py` for details.
+- **Pass Rate**: Percentage of trials meeting all vocabulary constraints
+- **Vocabulary Coverage**: How much of the allowed vocabulary is utilized
+- **Execution Time**: Average time per trial
+- **Success Rate**: Percentage of trials completing without errors
+- **Word Count**: Average number of words generated
 
-### Troubleshooting
+## CLI Options
 
-- Missing API key: providers will raise errors like `OPENAI_API_KEY is not set`. Ensure `.env` is loaded (we auto-load via `python-dotenv`).
-- OpenRouter headers: set `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` if required by your account/org policy.
-- HTTP 429 / rate limits: reduce `--trials`, remove high-cost models, or retry later.
-- Empty dashboards: ensure your run directories contain `summary.json` files.
+### Fetch Command
+```bash
+python -m vocab_story_bench fetch --langs LANGS [--top N]
+```
+- `--langs`: Language codes or 'all' for all 12 languages
+- `--top`: Number of top frequency words to fetch (default: 2000)
 
-### License
+### Run Command
+```bash
+python -m vocab_story_bench run [OPTIONS]
+```
+- `--interactive, -i`: Run in interactive mode
+- `--languages, -l`: Languages to test or 'all' for all languages
+- `--vocab-sizes, -v`: Vocabulary sizes (e.g., 1000 2000 3000)
+- `--models-config, -m`: Path to models configuration file
+- `--num-targets`: Number of target words per language (default: 5)
+- `--trials`: Number of trials per model (default: 3)
+- `--story-length`: Approximate story length in words (default: 150)
+- `--parallel`: Max parallel model executions (default: 8)
+- `--output-dir, -o`: Output directory (default: outputs)
 
-MIT
+## Example Workflow
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Set up API keys
+echo "OPENAI_API_KEY=sk-..." > .env
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+
+# 3. Fetch vocabulary data for all languages
+python -m vocab_story_bench fetch --langs all --top 2000
+
+# 4. Run interactive benchmark
+python -m vocab_story_bench --interactive
+
+# 5. Or run with specific parameters
+python -m vocab_story_bench run \
+  --languages en es \
+  --vocab-sizes 1000 \
+  --models-config configs/models.yaml \
+  --num-targets 5 \
+  --trials 3
+
+# 6. Run for all languages
+python -m vocab_story_bench run \
+  --languages all \
+  --vocab-sizes 1000 \
+  --models-config configs/models.yaml
+
+# 7. View results
+cat outputs/parallel_*/summary.json | jq
+```
+
+## Architecture
+
+```
+User Input → Beautiful CLI → Parallel Runner
+                                    ↓
+                          Thread Pool Executor
+                          ↙        ↓        ↘
+                   Language 1   Language 2   Language 3
+                       ↓            ↓            ↓
+                   [Models]     [Models]     [Models]
+                       ↓            ↓            ↓
+                  Structured    Structured   Structured
+                   Outputs      Outputs      Outputs
+                       ↓            ↓            ↓
+                  Validation    Validation   Validation
+                       ↘           ↓           ↙
+                         Results Aggregation
+                                ↓
+                        Beautiful Results Table
+```
+
+## Adding New Providers
+
+To add support for new LLM providers:
+
+1. Create a provider in `vocab_story_bench/providers/`:
+```python
+class StructuredYourProvider:
+    def generate_structured(self, model, system, user, response_format, ...):
+        # Implementation
+        return json_string
+```
+
+2. Register in `parallel_runner.py`:
+```python
+self.providers["your_provider"] = StructuredYourProvider()
+```
+
+## Performance
+
+- **Parallel Execution**: Run hundreds of trials in minutes
+- **Structured Outputs**: Eliminate parsing ambiguities
+- **Efficient Validation**: Direct word-by-word checking
+- **Thread Pool**: Configurable parallelization levels
+
+## License
+
+MIT License - see LICENSE file for details

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inclusion-bench"
+version = "0.1.0"
+description = "Vocab-only story benchmark with parallel runs and dashboards"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Inclusion Bench", email = "devnull@example.com"}]
+dependencies = [
+    "openai>=1.37.0",
+    "anthropic>=0.30.0",
+    "httpx>=0.27.0",
+    "PyYAML>=6.0.1",
+    "pandas>=2.1.0",
+    "tqdm>=4.66.0",
+    "tenacity>=8.2.3",
+    "regex>=2024.5.15",
+    "python-dotenv>=1.0.1",
+    "plotly>=5.22.0",
+    "rich>=13.7.1",
+]
+
+[project.scripts]
+vocab-bench = "vocab_story_bench.cli:main"
+
+

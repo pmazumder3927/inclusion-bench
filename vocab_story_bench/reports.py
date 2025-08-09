@@ -6,8 +6,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .validator import ValidationResult
-
 
 def ensure_dir(path: str | Path) -> Path:
     p = Path(path)
