@@ -4,16 +4,16 @@ import json
 
 
 def build_structured_prompt(
-    language: str,
     vocabulary: List[str],
-    target_words: List[str],
-    desired_length_words: int,
-) -> Tuple[str, str, Dict[str, Any]]:
+    targets: List[str],
+    language: str,
+    story_length: int,
+) -> Tuple[str, str]:
     """
-    Returns (system, user, response_format) for structured output.
+    Returns (system, user) for structured output.
     """
     vocab_str = ", ".join(vocabulary)
-    targets_str = ", ".join(target_words)
+    targets_str = ", ".join(targets)
 
     system = (
         "You are a creative writer that generates stories as arrays of words. "
@@ -25,7 +25,7 @@ def build_structured_prompt(
         f"Vocabulary list (use ONLY these words):\n"
         f"{vocab_str}\n\n"
         f"Target words (must appear in the story): {targets_str}\n"
-        f"Story length: approximately {desired_length_words} words.\n\n"
+        f"Story length: approximately {story_length} words.\n\n"
         "Generate a coherent story following these rules:\n"
         "1. Use ONLY words from the vocabulary list\n"
         "2. Include ALL target words\n"
@@ -56,7 +56,7 @@ def build_structured_prompt(
         }
     }
     
-    return system, user, response_format
+    return system, user
 
 
 def parse_structured_response(response: str) -> List[str]:

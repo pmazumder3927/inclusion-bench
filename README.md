@@ -7,8 +7,10 @@ A beautiful, high-performance benchmark for testing language models with vocabul
 - **Structured Output**: Models generate JSON arrays of words for precise validation
 - **Parallel Execution**: Run benchmarks across multiple languages and models simultaneously  
 - **Beautiful CLI**: Interactive mode with rich formatting and real-time progress tracking
-- **Multi-Provider Support**: OpenAI (GPT-5, GPT-4) and Anthropic (Claude) models
+- **Unified API Access**: All models accessed through OpenRouter's unified API - OpenAI, Anthropic, Qwen, DeepSeek, Mistral, and more
 - **Comprehensive Metrics**: Pass rates, vocabulary coverage, execution times, and more
+- **Rich Visualizations**: Interactive HTML dashboards with bar charts, heatmaps, and performance comparisons
+- **Terminal Charts**: Beautiful ASCII charts and tables displayed after each run
 
 ## Installation
 
@@ -64,17 +66,35 @@ python -m vocab_story_bench run \
 ### Models Configuration (configs/models.yaml)
 
 ```yaml
+# All models accessed via OpenRouter's unified API
 models:
-  - provider: openai
-    model: gpt-5
-    label: gpt5
+  # OpenAI models
+  - model: openai/gpt-4o
+    label: gpt4o
     params:
-      reasoning_effort: medium
       temperature: 0.7
   
-  - provider: anthropic
-    model: claude-3-5-sonnet-20241022
+  # Anthropic models  
+  - model: anthropic/claude-3.5-sonnet
     label: claude-3.5-sonnet
+    params:
+      temperature: 0.7
+  
+  # Qwen models
+  - model: qwen/qwen-2.5-72b-instruct
+    label: qwen2.5-72b
+    params:
+      temperature: 0.7
+  
+  # DeepSeek models
+  - model: deepseek/deepseek-chat
+    label: deepseek-chat
+    params:
+      temperature: 0.7
+  
+  # Free models
+  - model: qwen/qwq-32b:free
+    label: qwq-32b-free
     params:
       temperature: 0.7
 ```
@@ -82,8 +102,8 @@ models:
 ### Environment Variables (.env)
 
 ```bash
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
+# Single API key for all models via OpenRouter
+OPENROUTER_API_KEY=sk-or-...
 ```
 
 ## How It Works
@@ -102,7 +122,29 @@ ANTHROPIC_API_KEY=sk-ant-...
 outputs/parallel_20240809_143022/
 ├── details.jsonl          # Detailed trial results
 ├── summary.json           # Aggregated statistics
-└── dashboard.html         # Visual dashboard
+└── dashboard.html         # Interactive visual dashboard
+```
+
+### Visualizations
+
+After each benchmark run, you'll get:
+
+1. **Terminal Output**:
+   - Beautiful results table with color-coded metrics
+   - ASCII bar charts showing pass rates
+   - Language performance summary table
+
+2. **HTML Dashboard** (automatically generated):
+   - **Pass Rate Chart**: Grouped bar chart by model and language
+   - **Language Comparison**: Performance averaged across models
+   - **Model Performance Radar**: Multi-metric comparison
+   - **Vocabulary Coverage Heatmap**: Visual coverage matrix
+   - **Execution Time Distribution**: Box plots for timing analysis
+
+Open the dashboard in your browser:
+```bash
+# The path is displayed after the benchmark completes
+open outputs/parallel_*/dashboard.html
 ```
 
 ### Trial Result Example

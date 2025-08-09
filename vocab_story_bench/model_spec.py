@@ -6,28 +6,24 @@ from typing import Any, Optional
 
 @dataclass(frozen=True)
 class ModelSpec:
-    provider: str  # openai | anthropic | openrouter
-    model: str
-    label: Optional[str] = None
-    params: Optional[dict[str, Any]] = None
+    model: str  # OpenRouter model ID (e.g., "openai/gpt-4o", "qwen/qwq-32b:free")
+    label: Optional[str] = None  # Short label for display
+    params: Optional[dict[str, Any]] = None  # Model parameters like temperature
 
     @property
     def display_label(self) -> str:
-        return self.label or f"{self.provider}:{self.model}"
+        return self.label or self.model
 
     @staticmethod
     def parse_inline(token: str) -> "ModelSpec":
-        # format: provider:model or provider:model:label
-        parts = token.split(":")
-        if len(parts) < 2:
-            raise ValueError(f"Invalid model token: {token}")
-        if len(parts) == 2:
-            provider, model = parts
+        # format: model or model:label
+        parts = token.split(":", 1)
+        if len(parts) == 1:
+            model = parts[0]
             label = None
         else:
-            provider, model, label = parts[0], parts[1], ":".join(parts[2:])
+            model, label = parts
         return ModelSpec(
-            provider=provider.strip(),
             model=model.strip(),
             label=(label.strip() if label else None),
             params=None,

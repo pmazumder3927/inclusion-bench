@@ -18,7 +18,7 @@ from rich import print as rprint
 from dotenv import load_dotenv
 
 from .model_spec import ModelSpec
-from .parallel_runner import ParallelBenchmarkRunner, BenchmarkConfig
+from .parallel_runner import ParallelBenchmarkRunner
 from .data_fetch import ensure_top_n_for_lang
 
 
@@ -112,7 +112,7 @@ def interactive_mode():
         config_path = Prompt.ask("Enter config file path", default="configs/models.yaml")
         models = load_models_from_yaml(config_path)
     else:
-        console.print("Enter models in format 'provider:model' (one per line, empty line to finish):")
+        console.print("Enter models in OpenRouter format (e.g., 'openai/gpt-4o' or 'qwen/qwq-32b:free')\nOne per line, empty line to finish:")
         while True:
             model_input = Prompt.ask("Model (or press Enter to finish)", default="")
             if not model_input:
@@ -200,35 +200,36 @@ def run_benchmark_with_config(
     """Run the benchmark with the given configuration."""
     console.print("\n[bold blue]🚀 Starting Benchmark[/bold blue]\n")
     
-    # Ensure vocabulary data exists
+    # Ensure vocabulary data exists and load vocabularies
     console.print("[dim]Checking vocabulary data...[/dim]")
+    vocabularies = {}
     for lang in languages:
+        vocabularies[lang] = {}
         for size in vocab_sizes:
             try:
                 ensure_top_n_for_lang(lang, size, "data/vocab")
+                vocab = load_vocabulary(lang, size)
+                vocabularies[lang][size] = vocab
             except Exception as e:
                 console.print(f"[red]Error fetching vocabulary for {lang} top {size}: {e}[/red]")
                 return
     
-    # Create configuration
-    config = BenchmarkConfig(
+    # Run benchmark
+    runner = ParallelBenchmarkRunner()
+    results = runner.run_parallel(
+        models=models,
         languages=languages,
         vocab_sizes=vocab_sizes,
-        models=models,
-        target_words=target_words,
-        trials_per_model=trials,
+        vocabularies=vocabularies,
+        targets=target_words,
+        trials=trials,
         story_length=story_length,
-        max_parallel_models=max_parallel
+        max_parallel=max_parallel
     )
-    
-    # Run benchmark
-    runner = ParallelBenchmarkRunner(config)
-    results = runner.run_parallel()
     
     # Display completion message
     console.print("\n[bold green]✅ Benchmark Complete![/bold green]")
-    console.print(f"Results saved to: {results['output_dir']}")
-    console.print(f"Total trials: {results['total_trials']}")
+    console.print(f"Results saved to: {results}")
 
 
 def load_models_from_yaml(path: str) -> List[ModelSpec]:
@@ -240,7 +241,6 @@ def load_models_from_yaml(path: str) -> List[ModelSpec]:
     for item in data.get("models", []):
         models.append(
             ModelSpec(
-                provider=item["provider"],
                 model=item["model"],
                 label=item.get("label"),
                 params=item.get("params")

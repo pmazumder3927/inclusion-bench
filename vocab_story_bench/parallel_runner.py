@@ -1,4 +1,4 @@
-"""Parallel benchmark runner with structured outputs."""
+"""Parallel benchmark runner with unified OpenRouter provider."""
 from __future__ import annotations
 
 import asyncio
@@ -30,16 +30,15 @@ from rich import print as rprint
 
 from .model_spec import ModelSpec
 from .structured_prompt import build_structured_prompt, parse_structured_response
-from .providers.structured_openai import StructuredOpenAIProvider
-from .providers.structured_anthropic import StructuredAnthropicProvider
+from .unified_provider import UnifiedProvider
 from .reports import ensure_dir, append_jsonl, write_json
+from .visualizations import create_dashboard_html, display_terminal_charts
 
 
 @dataclass
 class StructuredTrialResult:
     """Result from a single trial with structured output."""
     model_label: str
-    provider: str
     model: str
     language: str
     vocab_size: int
@@ -48,124 +47,88 @@ class StructuredTrialResult:
     validation: Dict[str, Any]
     execution_time: float
     success: bool
-    error_message: Optional[str] = None
-
-
-@dataclass
-class BenchmarkConfig:
-    """Configuration for parallel benchmark execution."""
-    languages: List[str]
-    vocab_sizes: List[int]
-    models: List[ModelSpec]
-    target_words: Dict[str, List[str]]  # Per-language targets
-    trials_per_model: int = 3
-    max_parallel_models: int = 8
-    max_parallel_languages: int = 4
-    story_length: int = 150
-    output_dir: Path = Path("outputs")
+    error: Optional[str] = None
 
 
 class ParallelBenchmarkRunner:
-    """Runs benchmarks in parallel across languages and models."""
+    """Runs benchmarks in parallel across models and languages."""
     
-    def __init__(self, config: BenchmarkConfig):
-        self.config = config
+    def __init__(self, output_dir: str = "outputs"):
+        self.output_dir = Path(output_dir)
         self.console = Console()
+        self.provider = UnifiedProvider()
         self.results_lock = Lock()
-        self.all_results: List[StructuredTrialResult] = []
-        
-        # Initialize providers
-        self.providers = {}
-        
-        # Initialize OpenAI provider if API key is available
-        if os.getenv("OPENAI_API_KEY"):
-            try:
-                self.providers["openai"] = StructuredOpenAIProvider()
-            except Exception as e:
-                self.console.print(f"[yellow]Warning: Could not initialize OpenAI provider: {e}[/yellow]")
-        
-        # Initialize Anthropic provider if API key is available
-        if os.getenv("ANTHROPIC_API_KEY"):
-            try:
-                self.providers["anthropic"] = StructuredAnthropicProvider()
-            except Exception as e:
-                self.console.print(f"[yellow]Warning: Could not initialize Anthropic provider: {e}[/yellow]")
+        self.all_results = []
     
     def validate_words(
         self,
         words: List[str],
         vocabulary: Set[str],
-        targets: Set[str]
+        targets: List[str]
     ) -> Dict[str, Any]:
-        """Validate word array against vocabulary and targets."""
-        word_set = set(w.lower() for w in words)
-        vocab_set = set(v.lower() for v in vocabulary)
-        target_set = set(t.lower() for t in targets)
-        
-        oov_words = [w for w in word_set if w not in vocab_set]
-        missing_targets = [t for t in target_set if t not in word_set]
-        
-        return {
-            "only_vocab": len(oov_words) == 0,
-            "all_targets_present": len(missing_targets) == 0,
-            "oov_words": oov_words,
-            "missing_targets": missing_targets,
+        """Validate words against vocabulary and targets."""
+        validation = {
             "total_words": len(words),
-            "unique_words": len(word_set),
-            "vocabulary_coverage": len(word_set & vocab_set) / len(vocab_set) if vocab_set else 0
+            "only_vocab": all(word.lower() in vocabulary for word in words),
+            "all_targets_present": all(
+                any(target.lower() in word.lower() for word in words)
+                for target in targets
+            ),
+            "vocabulary_coverage": len(set(w.lower() for w in words) & vocabulary) / len(vocabulary),
+            "unique_words": len(set(words)),
+            "target_words_found": [t for t in targets if any(t.lower() in w.lower() for w in words)]
         }
+        
+        validation["pass"] = validation["only_vocab"] and validation["all_targets_present"]
+        
+        return validation
     
     def run_single_trial(
         self,
-        model: ModelSpec,
+        model_spec: ModelSpec,
         language: str,
         vocabulary: List[str],
         targets: List[str],
         vocab_size: int,
-        trial_index: int
+        trial_index: int,
+        story_length: int = 150,
+        task_id: Optional[int] = None,
+        progress: Optional[Progress] = None
     ) -> StructuredTrialResult:
-        """Execute a single trial for a model."""
-        start_time = dt.datetime.now()
+        """Run a single trial for a model-language combination."""
+        import time
+        start_time = time.time()
         
         try:
-            provider = self.providers.get(model.provider)
-            if not provider:
-                raise ValueError(f"Unknown provider: {model.provider}")
-            
             # Build structured prompt
-            system, user, response_format = build_structured_prompt(
-                language,
-                vocabulary,
-                targets,
-                self.config.story_length
+            system_prompt, user_prompt = build_structured_prompt(
+                vocabulary=vocabulary,
+                targets=targets,
+                language=language,
+                story_length=story_length
             )
             
-            # Generate structured response
-            response = provider.generate_structured(
-                model.model,
-                system,
-                user,
-                response_format,
-                max_output_tokens=self.config.story_length * 2,
-                params=model.params
+            # Generate structured output
+            response = self.provider.generate_structured(
+                model=model_spec.model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=story_length * 3,  # Buffer for JSON overhead
+                **model_spec.params
             )
             
-            # Parse response to get word array
+            # Parse structured response
             words = parse_structured_response(response)
             
             # Validate
-            validation = self.validate_words(
-                words,
-                set(vocabulary),
-                set(targets)
-            )
+            vocab_set = set(v.lower() for v in vocabulary)
+            validation = self.validate_words(words, vocab_set, targets)
             
-            execution_time = (dt.datetime.now() - start_time).total_seconds()
+            execution_time = time.time() - start_time
             
-            return StructuredTrialResult(
-                model_label=model.display_label,
-                provider=model.provider,
-                model=model.model,
+            result = StructuredTrialResult(
+                model_label=model_spec.label,
+                model=model_spec.model,
                 language=language,
                 vocab_size=vocab_size,
                 trial_index=trial_index,
@@ -175,248 +138,329 @@ class ParallelBenchmarkRunner:
                 success=True
             )
             
+            if progress and task_id is not None:
+                progress.update(task_id, advance=1)
+            
+            return result
+            
         except Exception as e:
-            execution_time = (dt.datetime.now() - start_time).total_seconds()
-            return StructuredTrialResult(
-                model_label=model.display_label,
-                provider=model.provider,
-                model=model.model,
+            execution_time = time.time() - start_time
+            
+            result = StructuredTrialResult(
+                model_label=model_spec.label,
+                model=model_spec.model,
                 language=language,
                 vocab_size=vocab_size,
                 trial_index=trial_index,
                 words=[],
-                validation={
-                    "only_vocab": False,
-                    "all_targets_present": False,
-                    "oov_words": [],
-                    "missing_targets": targets,
-                    "total_words": 0,
-                    "unique_words": 0,
-                    "vocabulary_coverage": 0
-                },
+                validation={"pass": False, "error": str(e)},
                 execution_time=execution_time,
                 success=False,
-                error_message=str(e)
+                error=str(e)
             )
+            
+            if progress and task_id is not None:
+                progress.update(task_id, advance=1)
+            
+            return result
     
-    def run_model_trials(
+    def run_model_language_combination(
         self,
-        model: ModelSpec,
+        model_spec: ModelSpec,
         language: str,
         vocabulary: List[str],
         targets: List[str],
         vocab_size: int,
+        trials: int,
+        story_length: int,
         progress: Progress,
         task_id: int
     ) -> List[StructuredTrialResult]:
-        """Run all trials for a single model."""
+        """Run all trials for a specific model-language combination."""
         results = []
         
-        for trial in range(self.config.trials_per_model):
+        for trial_index in range(trials):
             result = self.run_single_trial(
-                model, language, vocabulary, targets, vocab_size, trial
+                model_spec=model_spec,
+                language=language,
+                vocabulary=vocabulary,
+                targets=targets,
+                vocab_size=vocab_size,
+                trial_index=trial_index,
+                story_length=story_length,
+                task_id=task_id,
+                progress=progress
             )
+            
             results.append(result)
             
+            # Save result immediately
             with self.results_lock:
                 self.all_results.append(result)
-            
-            progress.update(task_id, advance=1)
         
         return results
     
-    def load_vocabulary(self, language: str, size: int) -> List[str]:
-        """Load vocabulary for a language and size."""
-        vocab_path = Path("data/vocab/top") / f"{language}_top{size}.txt"
-        if not vocab_path.exists():
-            raise FileNotFoundError(f"Vocabulary file not found: {vocab_path}")
+    def run_parallel(
+        self,
+        models: List[ModelSpec],
+        languages: List[str],
+        vocab_sizes: List[int],
+        vocabularies: Dict[str, Dict[int, List[str]]],
+        targets: Dict[str, List[str]],
+        trials: int = 3,
+        story_length: int = 150,
+        max_parallel: int = 8
+    ) -> str:
+        """Run benchmarks in parallel across models and languages."""
         
-        with open(vocab_path, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
-    
-    def run_parallel(self) -> Dict[str, Any]:
-        """Run benchmarks in parallel across all configurations."""
+        # Create output directory with timestamp
         timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = ensure_dir(self.config.output_dir / f"parallel_{timestamp}")
+        run_dir = self.output_dir / f"parallel_{timestamp}"
+        ensure_dir(run_dir)
         
-        # Create progress display
-        progress = Progress(
+        # Calculate total tasks
+        total_tasks = len(models) * len(languages) * len(vocab_sizes) * trials
+        
+        # Create rich progress display
+        with Progress(
             SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
+            TextColumn("[bold blue]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
             TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=self.console
-        )
-        
-        # Calculate total tasks
-        total_tasks = (
-            len(self.config.languages) *
-            len(self.config.vocab_sizes) *
-            len(self.config.models) *
-            self.config.trials_per_model
-        )
-        
-        # Create layout for beautiful display
-        layout = Layout()
-        layout.split_column(
-            Layout(Panel("🚀 Parallel Vocabulary Benchmark", style="bold blue"), size=3),
-            Layout(progress, size=10),
-            Layout(name="status", size=3)
-        )
-        
-        self.console.print(layout)
-        
-        with Live(layout, refresh_per_second=4, console=self.console):
-            with progress:
-                overall_task = progress.add_task(
-                    "[cyan]Overall Progress",
-                    total=total_tasks
-                )
+            console=self.console,
+            expand=True
+        ) as progress:
+            
+            # Create overall progress task
+            overall_task = progress.add_task(
+                f"[bold cyan]🚀 Running {total_tasks} trials",
+                total=total_tasks
+            )
+            
+            # Create tasks for each model-language combination
+            model_tasks = {}
+            for model in models:
+                for lang in languages:
+                    for vocab_size in vocab_sizes:
+                        task_name = f"{model.label} | {lang} | {vocab_size} words"
+                        task_id = progress.add_task(
+                            task_name,
+                            total=trials,
+                            visible=True
+                        )
+                        model_tasks[(model.label, lang, vocab_size)] = task_id
+            
+            # Run combinations in parallel
+            with ThreadPoolExecutor(max_workers=max_parallel) as executor:
+                futures = []
                 
-                # Run tasks in parallel
-                with ThreadPoolExecutor(max_workers=self.config.max_parallel_models) as executor:
-                    futures = []
-                    
-                    for language in self.config.languages:
-                        for vocab_size in self.config.vocab_sizes:
-                            # Load vocabulary
-                            try:
-                                vocabulary = self.load_vocabulary(language, vocab_size)
-                            except FileNotFoundError as e:
-                                self.console.print(f"[red]Error: {e}[/red]")
+                for model in models:
+                    for lang in languages:
+                        for vocab_size in vocab_sizes:
+                            if lang not in vocabularies or vocab_size not in vocabularies[lang]:
+                                self.console.print(f"[yellow]Skipping {lang}-{vocab_size}: vocabulary not found[/yellow]")
                                 continue
                             
-                            # Get targets for this language
-                            targets = self.config.target_words.get(
-                                language,
-                                self.config.target_words.get("default", [])
-                            )
+                            vocabulary = vocabularies[lang][vocab_size]
+                            lang_targets = targets.get(lang, [])
+                            task_id = model_tasks[(model.label, lang, vocab_size)]
                             
-                            for model in self.config.models:
-                                task_name = f"{model.display_label} | {language} | {vocab_size} words"
-                                task_id = progress.add_task(
-                                    task_name,
-                                    total=self.config.trials_per_model
-                                )
-                                
-                                future = executor.submit(
-                                    self.run_model_trials,
-                                    model,
-                                    language,
-                                    vocabulary,
-                                    targets,
-                                    vocab_size,
-                                    progress,
-                                    task_id
-                                )
-                                futures.append(future)
-                    
-                    # Wait for completion and update overall progress
-                    for future in as_completed(futures):
-                        results = future.result()
-                        progress.update(
-                            overall_task,
-                            advance=len(results)
-                        )
+                            future = executor.submit(
+                                self.run_model_language_combination,
+                                model,
+                                lang,
+                                vocabulary,
+                                lang_targets,
+                                vocab_size,
+                                trials,
+                                story_length,
+                                progress,
+                                task_id
+                            )
+                            futures.append((future, model, lang, vocab_size))
+                
+                # Process results as they complete
+                for future, model, lang, vocab_size in futures:
+                    try:
+                        results = future.result(timeout=300)
                         
-                        # Update status
-                        completed = progress.tasks[overall_task].completed
-                        layout["status"].update(
-                            Panel(f"✅ Completed: {completed}/{total_tasks}", style="green")
-                        )
-        
-        # Save results
-        self.save_results(output_dir)
+                        # Write results to JSONL
+                        for result in results:
+                            append_jsonl(
+                                run_dir / "details.jsonl",
+                                asdict(result)
+                            )
+                        
+                        # Update overall progress
+                        progress.update(overall_task, advance=trials)
+                        
+                    except Exception as e:
+                        self.console.print(f"[red]Error with {model.label} {lang}: {e}[/red]")
+                        progress.update(overall_task, advance=trials)
         
         # Generate summary
-        summary = self.generate_summary()
+        summary = self.generate_summary(self.all_results)
+        write_json(run_dir / "summary.json", summary)
         
-        # Display final results table
-        self.display_results_table(summary)
+        # Display results table
+        self.display_results_table(self.all_results)
+        
+        # Display terminal charts
+        display_terminal_charts(self.all_results)
+        
+        # Generate HTML dashboard
+        dashboard_path = run_dir / "dashboard.html"
+        create_dashboard_html(self.all_results, dashboard_path)
+        self.console.print(f"\n📊 [bold green]Interactive dashboard generated![/bold green]")
+        self.console.print(f"   Open in browser: [cyan]file://{dashboard_path.absolute()}[/cyan]")
+        
+        return str(run_dir)
+    
+    def generate_summary(self, results: List[StructuredTrialResult]) -> Dict[str, Any]:
+        """Generate summary statistics from results."""
+        if not results:
+            return {}
+        
+        # Group by model and language
+        model_stats = {}
+        language_stats = {}
+        
+        for result in results:
+            # Model stats
+            if result.model_label not in model_stats:
+                model_stats[result.model_label] = {
+                    "trials": 0,
+                    "passed": 0,
+                    "total_words": 0,
+                    "vocab_coverage": [],
+                    "execution_times": []
+                }
+            
+            model_stats[result.model_label]["trials"] += 1
+            if result.success and result.validation.get("pass", False):
+                model_stats[result.model_label]["passed"] += 1
+            if result.success:
+                model_stats[result.model_label]["total_words"] += result.validation.get("total_words", 0)
+                model_stats[result.model_label]["vocab_coverage"].append(
+                    result.validation.get("vocabulary_coverage", 0)
+                )
+            model_stats[result.model_label]["execution_times"].append(result.execution_time)
+            
+            # Language stats
+            if result.language not in language_stats:
+                language_stats[result.language] = {
+                    "trials": 0,
+                    "passed": 0,
+                    "vocab_coverage": []
+                }
+            
+            language_stats[result.language]["trials"] += 1
+            if result.success and result.validation.get("pass", False):
+                language_stats[result.language]["passed"] += 1
+            if result.success:
+                language_stats[result.language]["vocab_coverage"].append(
+                    result.validation.get("vocabulary_coverage", 0)
+                )
+        
+        # Calculate averages
+        for model, stats in model_stats.items():
+            stats["pass_rate"] = stats["passed"] / stats["trials"] if stats["trials"] > 0 else 0
+            stats["avg_words"] = stats["total_words"] / stats["trials"] if stats["trials"] > 0 else 0
+            stats["avg_vocab_coverage"] = (
+                sum(stats["vocab_coverage"]) / len(stats["vocab_coverage"])
+                if stats["vocab_coverage"] else 0
+            )
+            stats["avg_execution_time"] = (
+                sum(stats["execution_times"]) / len(stats["execution_times"])
+                if stats["execution_times"] else 0
+            )
+            # Remove raw lists
+            del stats["vocab_coverage"]
+            del stats["execution_times"]
+        
+        for lang, stats in language_stats.items():
+            stats["pass_rate"] = stats["passed"] / stats["trials"] if stats["trials"] > 0 else 0
+            stats["avg_vocab_coverage"] = (
+                sum(stats["vocab_coverage"]) / len(stats["vocab_coverage"])
+                if stats["vocab_coverage"] else 0
+            )
+            del stats["vocab_coverage"]
         
         return {
-            "output_dir": str(output_dir),
-            "summary": summary,
-            "total_trials": len(self.all_results)
+            "total_trials": len(results),
+            "models": model_stats,
+            "languages": language_stats,
+            "timestamp": dt.datetime.now().isoformat()
         }
     
-    def save_results(self, output_dir: Path):
-        """Save all results to files."""
-        # Save detailed results as JSONL
-        details_path = output_dir / "details.jsonl"
-        for result in self.all_results:
-            append_jsonl(details_path, asdict(result))
+    def display_results_table(self, results: List[StructuredTrialResult]):
+        """Display results in a beautiful table."""
+        if not results:
+            return
         
-        # Save summary
-        summary = self.generate_summary()
-        summary_path = output_dir / "summary.json"
-        write_json(summary_path, summary)
-    
-    def generate_summary(self) -> Dict[str, Any]:
-        """Generate summary statistics from results."""
-        summary = {}
-        
-        # Group by model, language, vocab_size
-        grouped = {}
-        for result in self.all_results:
+        # Aggregate results
+        aggregated = {}
+        for result in results:
             key = (result.model_label, result.language, result.vocab_size)
-            if key not in grouped:
-                grouped[key] = []
-            grouped[key].append(result)
-        
-        # Calculate statistics for each group
-        for (model, lang, size), results in grouped.items():
-            success_rate = sum(1 for r in results if r.success) / len(results)
-            pass_rate = sum(
-                1 for r in results
-                if r.validation["only_vocab"] and r.validation["all_targets_present"]
-            ) / len(results)
+            if key not in aggregated:
+                aggregated[key] = {
+                    "trials": 0,
+                    "passed": 0,
+                    "total_words": 0,
+                    "vocab_coverage": [],
+                    "execution_times": []
+                }
             
-            avg_execution_time = sum(r.execution_time for r in results) / len(results)
-            avg_word_count = sum(r.validation["total_words"] for r in results) / len(results)
-            avg_coverage = sum(r.validation["vocabulary_coverage"] for r in results) / len(results)
-            
-            summary[f"{model}_{lang}_{size}"] = {
-                "model": model,
-                "language": lang,
-                "vocab_size": size,
-                "trials": len(results),
-                "success_rate": round(success_rate, 3),
-                "pass_rate": round(pass_rate, 3),
-                "avg_execution_time": round(avg_execution_time, 2),
-                "avg_word_count": round(avg_word_count, 1),
-                "avg_vocabulary_coverage": round(avg_coverage, 3)
-            }
+            aggregated[key]["trials"] += 1
+            if result.success and result.validation.get("pass", False):
+                aggregated[key]["passed"] += 1
+            if result.success:
+                aggregated[key]["total_words"] += result.validation.get("total_words", 0)
+                aggregated[key]["vocab_coverage"].append(
+                    result.validation.get("vocabulary_coverage", 0)
+                )
+            aggregated[key]["execution_times"].append(result.execution_time)
         
-        return summary
-    
-    def display_results_table(self, summary: Dict[str, Any]):
-        """Display a beautiful results table."""
-        table = Table(title="Benchmark Results", show_header=True, header_style="bold magenta")
-        
+        # Create table
+        table = Table(title="📊 Benchmark Results", expand=True)
         table.add_column("Model", style="cyan", no_wrap=True)
-        table.add_column("Language", style="yellow")
-        table.add_column("Vocab Size", justify="right", style="green")
-        table.add_column("Pass Rate", justify="right", style="blue")
-        table.add_column("Avg Words", justify="right")
-        table.add_column("Avg Time (s)", justify="right")
-        table.add_column("Coverage", justify="right", style="magenta")
+        table.add_column("Language", style="magenta")
+        table.add_column("Vocab Size", style="yellow")
+        table.add_column("Pass Rate", style="green")
+        table.add_column("Vocab Coverage", style="blue")
+        table.add_column("Avg Words", style="white")
+        table.add_column("Avg Time", style="dim")
         
-        for key, stats in summary.items():
-            pass_rate_color = "green" if stats["pass_rate"] > 0.8 else "yellow" if stats["pass_rate"] > 0.5 else "red"
+        for (model, lang, vocab_size), stats in sorted(aggregated.items()):
+            pass_rate = stats["passed"] / stats["trials"] if stats["trials"] > 0 else 0
+            avg_coverage = (
+                sum(stats["vocab_coverage"]) / len(stats["vocab_coverage"])
+                if stats["vocab_coverage"] else 0
+            )
+            avg_words = stats["total_words"] / stats["trials"] if stats["trials"] > 0 else 0
+            avg_time = (
+                sum(stats["execution_times"]) / len(stats["execution_times"])
+                if stats["execution_times"] else 0
+            )
+            
+            # Color code pass rate
+            if pass_rate >= 0.8:
+                pass_rate_str = f"[bold green]{pass_rate:.1%}[/bold green]"
+            elif pass_rate >= 0.5:
+                pass_rate_str = f"[yellow]{pass_rate:.1%}[/yellow]"
+            else:
+                pass_rate_str = f"[red]{pass_rate:.1%}[/red]"
             
             table.add_row(
-                stats["model"],
-                stats["language"],
-                str(stats["vocab_size"]),
-                f"[{pass_rate_color}]{stats['pass_rate']:.1%}[/{pass_rate_color}]",
-                str(int(stats["avg_word_count"])),
-                f"{stats['avg_execution_time']:.1f}",
-                f"{stats['avg_vocabulary_coverage']:.1%}"
+                model,
+                lang,
+                str(vocab_size),
+                pass_rate_str,
+                f"{avg_coverage:.1%}",
+                f"{avg_words:.0f}",
+                f"{avg_time:.1f}s"
             )
         
         self.console.print("\n")
         self.console.print(table)
-        self.console.print("\n")

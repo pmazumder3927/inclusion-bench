@@ -1,67 +1,8 @@
-# Configuration for models with structured output support
+# Configuration for GPT-5 via OpenRouter
 models:
-  # OpenAI GPT-5 family with reasoning controls
-  - provider: openai
-    model: gpt-5
-    label: gpt5-structured
-    params:
-      reasoning_effort: medium
-      verbosity: low
-      temperature: 0.7
-  
-  - provider: openai
-    model: gpt-5-mini
-    label: gpt5-mini-structured
-    params:
-      reasoning_effort: low
-      temperature: 0.7
-  
-  # OpenAI GPT-4 family with structured outputs
-  - provider: openai
-    model: gpt-4o
-    label: gpt4o-structured
+  - model: openai/gpt-5
+    label: gpt5-minimal
     params:
       temperature: 0.7
-  
-  - provider: openai
-    model: gpt-4o-mini
-    label: gpt4o-mini-structured
-    params:
-      temperature: 0.7
-  
-  - provider: openai
-    model: gpt-4.1
-    label: gpt4.1-structured
-    params:
-      temperature: 0.7
-  
-  - provider: openai
-    model: gpt-4.1-mini
-    label: gpt4.1-mini-structured
-    params:
-      temperature: 0.7
-  
-  # Anthropic Claude models
-  - provider: anthropic
-    model: claude-sonnet-4-20250514
-    label: claude-sonnet-4-structured
-    params:
-      temperature: 0.7
-  
-  - provider: anthropic
-    model: claude-opus-4-20250514
-    label: claude-opus-4-structured
-    params:
-      temperature: 0.7
-  
-  - provider: anthropic
-    model: claude-3-5-sonnet-20241022
-    label: claude-3.5-sonnet-structured
-    params:
-      temperature: 0.7
-  
-  - provider: anthropic
-    model: claude-3-5-haiku-20241022
-    label: claude-3.5-haiku-structured
-    params:
-      temperature: 0.7
+      reasoning_effort: minimal
+      verbosity: medium
