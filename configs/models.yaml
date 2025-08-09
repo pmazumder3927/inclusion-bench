@@ -4,5 +4,5 @@ models:
     label: gpt5-minimal
     params:
       temperature: 0.7
-      reasoning_effort: minimal
-      verbosity: medium
+      text.reasoning_effort: minimal
+      text.verbosity: medium

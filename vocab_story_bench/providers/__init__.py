@@ -1,1 +1,0 @@
-# Providers module - all models accessed via unified OpenRouter provider

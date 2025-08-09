@@ -5,7 +5,7 @@ A beautiful, high-performance benchmark for testing language models with vocabul
 ## Features
 
 - **Structured Output**: Models generate JSON arrays of words for precise validation
-- **Parallel Execution**: Run benchmarks across multiple languages and models simultaneously  
+- **Parallel Execution**: Run benchmarks across multiple languages and models simultaneously
 - **Beautiful CLI**: Interactive mode with rich formatting and real-time progress tracking
 - **Unified API Access**: All models accessed through OpenRouter's unified API - OpenAI, Anthropic, Qwen, DeepSeek, Mistral, and more
 - **Comprehensive Metrics**: Pass rates, vocabulary coverage, execution times, and more
@@ -31,6 +31,7 @@ python -m vocab_story_bench --interactive
 ```
 
 This will guide you through:
+
 1. Language selection (or 'all' for all 12 languages)
 2. Vocabulary size configuration (1000, 2000, 3000, etc.)
 3. Model selection (from config or manual entry)
@@ -73,25 +74,25 @@ models:
     label: gpt4o
     params:
       temperature: 0.7
-  
-  # Anthropic models  
+
+  # Anthropic models
   - model: anthropic/claude-3.5-sonnet
     label: claude-3.5-sonnet
     params:
       temperature: 0.7
-  
+
   # Qwen models
   - model: qwen/qwen-2.5-72b-instruct
     label: qwen2.5-72b
     params:
       temperature: 0.7
-  
+
   # DeepSeek models
   - model: deepseek/deepseek-chat
     label: deepseek-chat
     params:
       temperature: 0.7
-  
+
   # Free models
   - model: qwen/qwq-32b:free
     label: qwq-32b-free
@@ -118,6 +119,7 @@ OPENROUTER_API_KEY=sk-or-...
 ## Output Format
 
 ### Results Directory Structure
+
 ```
 outputs/parallel_20240809_143022/
 ├── details.jsonl          # Detailed trial results
@@ -130,6 +132,7 @@ outputs/parallel_20240809_143022/
 After each benchmark run, you'll get:
 
 1. **Terminal Output**:
+
    - Beautiful results table with color-coded metrics
    - ASCII bar charts showing pass rates
    - Language performance summary table
@@ -142,12 +145,14 @@ After each benchmark run, you'll get:
    - **Execution Time Distribution**: Box plots for timing analysis
 
 Open the dashboard in your browser:
+
 ```bash
 # The path is displayed after the benchmark completes
 open outputs/parallel_*/dashboard.html
 ```
 
 ### Trial Result Example
+
 ```json
 {
   "model_label": "gpt5",
@@ -177,16 +182,20 @@ open outputs/parallel_*/dashboard.html
 ## CLI Options
 
 ### Fetch Command
+
 ```bash
 python -m vocab_story_bench fetch --langs LANGS [--top N]
 ```
+
 - `--langs`: Language codes or 'all' for all 12 languages
 - `--top`: Number of top frequency words to fetch (default: 2000)
 
 ### Run Command
+
 ```bash
 python -m vocab_story_bench run [OPTIONS]
 ```
+
 - `--interactive, -i`: Run in interactive mode
 - `--languages, -l`: Languages to test or 'all' for all languages
 - `--vocab-sizes, -v`: Vocabulary sizes (e.g., 1000 2000 3000)
@@ -257,6 +266,7 @@ User Input → Beautiful CLI → Parallel Runner
 To add support for new LLM providers:
 
 1. Create a provider in `vocab_story_bench/providers/`:
+
 ```python
 class StructuredYourProvider:
     def generate_structured(self, model, system, user, response_format, ...):
@@ -264,10 +274,7 @@ class StructuredYourProvider:
         return json_string
 ```
 
-2. Register in `parallel_runner.py`:
-```python
-self.providers["your_provider"] = StructuredYourProvider()
-```
+2. Use `UnifiedProvider` via OpenRouter in `parallel_runner.py` (no manual registration needed).
 
 ## Performance
 

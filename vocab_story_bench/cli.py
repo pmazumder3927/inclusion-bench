@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.markdown import Markdown
-from rich.prompt import Prompt, IntPrompt, Confirm
+from rich.prompt import Prompt, Confirm
 from rich import print as rprint
 from dotenv import load_dotenv
 
@@ -92,9 +92,10 @@ def interactive_mode():
     
     # Vocabulary sizes
     console.print("[bold yellow]Step 2: Select Vocabulary Sizes[/bold yellow]")
+    console.print("[dim]Available sizes: 1000, 2000, 3000, 4000, 5000[/dim]")
     sizes_input = Prompt.ask(
         "Enter vocabulary sizes (space-separated)",
-        default="1000 2000"
+        default="1000 2000 3000"
     )
     vocab_sizes = [int(s) for s in sizes_input.split()]
     console.print(f"✅ Selected sizes: {', '.join(map(str, vocab_sizes))}\n")
@@ -105,10 +106,10 @@ def interactive_mode():
     console.print("  1. Use predefined models from config file")
     console.print("  2. Enter models manually")
     
-    model_choice = IntPrompt.ask("Choose option", choices=["1", "2"])
+    model_choice = Prompt.ask("Choose option", choices=["1", "2"])
     
     models = []
-    if model_choice == 1:
+    if model_choice == "1":
         config_path = Prompt.ask("Enter config file path", default="configs/models.yaml")
         models = load_models_from_yaml(config_path)
     else:
@@ -125,7 +126,16 @@ def interactive_mode():
     console.print("[bold yellow]Step 4: Configure Target Words[/bold yellow]")
     console.print("Target words will be automatically selected from each language's vocabulary")
     
-    num_targets = IntPrompt.ask("Number of target words per language", default=5, min_value=1, max_value=10)
+    num_targets = Prompt.ask("Number of target words per language", default="5")
+    # Basic bounds to keep prompts reasonable
+    try:
+        num_targets = int(num_targets)
+    except Exception:
+        num_targets = 5
+    if num_targets < 1:
+        num_targets = 1
+    if num_targets > 10:
+        num_targets = 10
     use_custom_targets = Confirm.ask("Do you want to specify custom targets for any language?", default=False)
     
     target_words = {}
@@ -156,9 +166,9 @@ def interactive_mode():
     
     # Additional settings
     console.print("[bold yellow]Step 5: Additional Settings[/bold yellow]")
-    trials = IntPrompt.ask("Trials per model", default=3)
-    story_length = IntPrompt.ask("Approximate story length (words)", default=150)
-    max_parallel = IntPrompt.ask("Max parallel models", default=8)
+    trials = int(Prompt.ask("Trials per model", default="3"))
+    story_length = int(Prompt.ask("Approximate story length (words)", default="150"))
+    max_parallel = int(Prompt.ask("Max parallel models", default="8"))
     
     # Confirm settings
     console.print("\n[bold green]Configuration Summary:[/bold green]")
@@ -416,3 +426,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
