@@ -113,7 +113,7 @@ class ParallelBenchmarkRunner:
                 model=model_spec.model,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=4000,  # Fixed high token limit for all models
+                max_tokens=16000,  # Very high limit to handle 5k vocabulary cases
                 response_format=response_format,
                 **(model_spec.params or {})
             )
