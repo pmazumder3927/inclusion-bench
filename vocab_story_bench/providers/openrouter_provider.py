@@ -16,7 +16,8 @@ class OpenRouterProvider:
         self.http_referer = os.getenv("OPENROUTER_HTTP_REFERER")
         self.x_title = os.getenv("OPENROUTER_X_TITLE")
 
-    def generate(self, model: str, system: str, user: str, max_output_tokens: int = 400) -> str:
+    def generate(self, model: str, system: str, user: str, max_output_tokens: int = 400, params: dict[str, Any] | None = None) -> str:
+        params = params or {}
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -33,8 +34,11 @@ class OpenRouterProvider:
                 {"role": "user", "content": user},
             ],
             "max_tokens": max_output_tokens,
-            "temperature": 0.7,
         }
+        if "temperature" in params:
+            payload["temperature"] = params["temperature"]
+        if "top_p" in params:
+            payload["top_p"] = params["top_p"]
         url = f"{self.base_url}/chat/completions"
         with httpx.Client(timeout=120) as client:
             resp = client.post(url, headers=headers, json=payload)

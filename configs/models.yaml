@@ -3,43 +3,74 @@ models:
   - provider: openai
     model: gpt-5
     label: gpt5
+    params:
+      reasoning_effort: high  # minimal | low | medium | high
+      verbosity: medium       # low | medium | high
   - provider: openai
     model: gpt-5-mini
     label: gpt5-mini
+    params:
+      reasoning_effort: medium
+      verbosity: medium
   - provider: openai
     model: gpt-5-nano
     label: gpt5-nano
+    params:
+      reasoning_effort: low
+      verbosity: low
   - provider: openai
     model: gpt-4.1
     label: gpt4.1
+    params:
+      temperature: 0.7
+      top_p: 1
   - provider: openai
     model: gpt-4.1-mini
     label: gpt4.1-mini
+    params:
+      temperature: 0.7
+      top_p: 1
   - provider: openai
     model: gpt-4o
     label: gpt4o
+    params:
+      temperature: 0.7
   - provider: openai
     model: gpt-4o-mini
     label: gpt4o-mini
+    params:
+      temperature: 0.7
 
   # Anthropic Claude Sonnet 4 and Opus 4
   - provider: anthropic
     model: claude-sonnet-4-20250514
     label: claude-sonnet-4
+    params:
+      temperature: 0.7
   - provider: anthropic
     model: claude-opus-4-20250514
     label: claude-opus-4
+    params:
+      temperature: 0.7
 
   # OpenRouter: Qwen 3 variants
   - provider: openrouter
     model: qwen/qwen3-235b-a22b-2507
     label: qwen3-235b-a22b
+    params:
+      temperature: 0.7
   - provider: openrouter
     model: qwen/qwen3-30b-a3b-instruct-2507
     label: qwen3-30b-a3b-instruct
+    params:
+      temperature: 0.7
   - provider: openrouter
     model: qwen/qwen3-14b
     label: qwen3-14b
+    params:
+      temperature: 0.7
   - provider: openrouter
     model: qwen/qwen3-4b
     label: qwen3-4b
+    params:
+      temperature: 0.7

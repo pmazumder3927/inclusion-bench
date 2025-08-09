@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -9,6 +9,7 @@ class ModelSpec:
     provider: str  # openai | anthropic | openrouter
     model: str
     label: Optional[str] = None
+    params: Optional[dict[str, Any]] = None
 
     @property
     def display_label(self) -> str:
@@ -25,4 +26,9 @@ class ModelSpec:
             label = None
         else:
             provider, model, label = parts[0], parts[1], ":".join(parts[2:])
-        return ModelSpec(provider=provider.strip(), model=model.strip(), label=(label.strip() if label else None))
+        return ModelSpec(
+            provider=provider.strip(),
+            model=model.strip(),
+            label=(label.strip() if label else None),
+            params=None,
+        )

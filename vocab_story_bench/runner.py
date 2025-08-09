@@ -48,6 +48,7 @@ def build_models_from_yaml(path: str | Path) -> List[ModelSpec]:
                 provider=item["provider"],
                 model=item["model"],
                 label=item.get("label"),
+                params=item.get("params") or item.get("parameters"),
             )
         )
     return models
@@ -94,6 +95,7 @@ def run_benchmark(
                     system=system,
                     user=user,
                     max_output_tokens=max(64, desired_length_words * 2),
+                    params=spec.params or {},
                 )
             except Exception as e:
                 skipped_models.append(f"{spec.display_label} trial {trial} ({e})")
