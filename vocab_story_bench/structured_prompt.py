@@ -36,6 +36,8 @@ def build_structured_prompt(
     
     # JSON schema for structured output (OpenRouter structured outputs)
     # Reference: https://openrouter.ai/docs/features/structured-outputs
+    # Encourage at least some words to avoid empty arrays when schema is strict
+    min_items = max(10, min(story_length // 2 if isinstance(story_length, int) else 50, 300))
     response_format = {
         "type": "json_schema",
         "json_schema": {
@@ -46,6 +48,7 @@ def build_structured_prompt(
                 "properties": {
                     "words": {
                         "type": "array",
+                        "minItems": min_items,
                         "items": {
                             "type": "string"
                         },

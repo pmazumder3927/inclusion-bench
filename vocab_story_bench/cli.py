@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from .model_spec import ModelSpec
 from .parallel_runner import ParallelBenchmarkRunner
 from .data_fetch import ensure_top_n_for_lang
+from .visualizations import create_dashboard_from_jsonl
 
 
 console = Console()
@@ -194,7 +195,8 @@ def interactive_mode():
     # Run benchmark
     run_benchmark_with_config(
         languages, vocab_sizes, models, target_words,
-        trials, story_length, max_parallel
+        trials, story_length, max_parallel,
+        output_dir=Path("outputs"),
     )
 
 
@@ -205,7 +207,8 @@ def run_benchmark_with_config(
     target_words: Dict[str, List[str]],
     trials: int,
     story_length: int,
-    max_parallel: int
+    max_parallel: int,
+    output_dir: Path | str = Path("outputs"),
 ):
     """Run the benchmark with the given configuration."""
     console.print("\n[bold blue]🚀 Starting Benchmark[/bold blue]\n")
@@ -225,7 +228,7 @@ def run_benchmark_with_config(
                 return
     
     # Run benchmark
-    runner = ParallelBenchmarkRunner()
+    runner = ParallelBenchmarkRunner(output_dir=str(output_dir))
     results = runner.run_parallel(
         models=models,
         languages=languages,
@@ -337,6 +340,11 @@ def main():
         default=Path("outputs"),
         help="Output directory (default: outputs)"
     )
+
+    # Viz command: build dashboard from an existing details.jsonl
+    viz = subparsers.add_parser("viz", help="Generate dashboard HTML from a details.jsonl file")
+    viz.add_argument("details", type=Path, help="Path to details.jsonl")
+    viz.add_argument("--out", type=Path, default=Path("dashboard.html"), help="Output HTML file path")
     
     # Also add --interactive at top level for backward compatibility
     parser.add_argument(
@@ -368,6 +376,16 @@ def main():
                 console.print(f"  ❌ {lang}: {e}")
         
         console.print(f"\n[green]Completed fetching {len(out_paths)} vocabulary files[/green]")
+        return
+    if args.command == "viz":
+        # Create dashboard from a JSONL file
+        try:
+            out_file = args.out
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            create_dashboard_from_jsonl(args.details, out_file)
+            console.print(f"\n[bold green]📊 Dashboard generated:[/bold green] {out_file}")
+        except Exception as e:
+            console.print(f"[red]Failed to generate dashboard:[/red] {e}")
         return
     
     # If interactive mode or no arguments provided
@@ -417,7 +435,8 @@ def main():
             target_words,
             args.trials,
             args.story_length,
-            args.parallel
+            args.parallel,
+            args.output_dir
         )
     else:
         # No command specified, run interactive mode

@@ -64,10 +64,19 @@ Rules:
         # Add any additional parameters verbatim from kwargs
         for k, v in kwargs.items():
             data[k] = v
-        
-        # Forward structured outputs only if provided; no capability checks or fallbacks
+
+        # Normalize response_format usage based on model capability
+        # If the caller passed response_format, decide whether to keep, downgrade to json_object, or remove
         if "response_format" in data:
-            pass
+            if self._supports_structured_outputs(model):
+                # Keep as-is (OpenRouter structured outputs)
+                pass
+            elif self._supports_json_mode(model):
+                # Downgrade to generic JSON mode for OpenAI-style models
+                data["response_format"] = {"type": "json_object"}
+            else:
+                # Remove response_format entirely for models that don't support it
+                data.pop("response_format", None)
         
         response = requests.post(
             f"{self.base_url}/chat/completions",
