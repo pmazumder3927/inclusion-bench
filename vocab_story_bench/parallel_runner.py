@@ -100,8 +100,8 @@ class ParallelBenchmarkRunner:
         start_time = time.time()
         
         try:
-            # Build structured prompt
-            system_prompt, user_prompt = build_structured_prompt(
+            # Build structured prompt + JSON schema response_format
+            system_prompt, user_prompt, response_format = build_structured_prompt(
                 vocabulary=vocabulary,
                 targets=targets,
                 language=language,
@@ -113,8 +113,9 @@ class ParallelBenchmarkRunner:
                 model=model_spec.model,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=story_length * 3,  # Buffer for JSON overhead
-                **model_spec.params
+                max_tokens=4000,  # Fixed high token limit for all models
+                response_format=response_format,
+                **(model_spec.params or {})
             )
             
             # Parse structured response

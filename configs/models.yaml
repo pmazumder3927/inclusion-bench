@@ -1,8 +1,42 @@
-# Configuration for GPT-5 via OpenRouter
+# Configuration for benchmarking recent frontier models via OpenRouter
 models:
+  # GPT-5 variants (simplified - parameters removed due to API compatibility)
   - model: openai/gpt-5
-    label: gpt5-minimal
-    params:
-      temperature: 0.7
-      text.reasoning_effort: minimal
-      text.verbosity: medium
+    label: gpt5-low
+
+  - model: openai/gpt-5
+    label: gpt5-medium
+
+  - model: openai/gpt-5
+    label: gpt5-high
+
+  # xAI Grok-4
+  - model: x-ai/grok-4
+    label: grok-4
+
+  # Anthropic Claude 4 (Sonnet / Opus)
+  - model: anthropic/claude-sonnet-4
+    label: claude-4-sonnet
+
+  - model: anthropic/claude-opus-4.1
+    label: claude-4-opus
+
+  # Qwen3 Instruct sizes
+  - model: qwen/qwen3-8b:free
+    label: qwen3-8b
+
+  - model: qwen/qwen3-32b
+    label: qwen3-32b
+
+  - model: qwen/qwen3-30b-a3b-instruct-2507
+    label: qwen3-30b-a3b
+
+  - model: qwen/qwen3-235b-a22b-2507
+    label: qwen3-235b-a22b
+
+  # OpenAI-OSS open-weight models
+  - model: openai/gpt-oss-20b
+    label: gpt-oss-20b
+
+  - model: openai/gpt-oss-120b
+    label: gpt-oss-120b

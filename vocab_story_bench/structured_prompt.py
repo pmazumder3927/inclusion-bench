@@ -8,9 +8,10 @@ def build_structured_prompt(
     targets: List[str],
     language: str,
     story_length: int,
-) -> Tuple[str, str]:
+) -> Tuple[str, str, Dict[str, Any]]:
     """
-    Returns (system, user) for structured output.
+    Returns (system, user, response_format) for structured output.
+    Conforms to OpenRouter Structured Outputs with JSON Schema.
     """
     vocab_str = ", ".join(vocabulary)
     targets_str = ", ".join(targets)
@@ -33,7 +34,8 @@ def build_structured_prompt(
         "4. Each word should be a separate string in the array"
     )
     
-    # JSON schema for structured output
+    # JSON schema for structured output (OpenRouter structured outputs)
+    # Reference: https://openrouter.ai/docs/features/structured-outputs
     response_format = {
         "type": "json_schema",
         "json_schema": {
@@ -56,7 +58,7 @@ def build_structured_prompt(
         }
     }
     
-    return system, user
+    return system, user, response_format
 
 
 def parse_structured_response(response: str) -> List[str]:

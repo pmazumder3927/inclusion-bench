@@ -25,7 +25,7 @@ class UnifiedProvider:
         system_prompt: str,
         user_prompt: str,
         max_tokens: int = 1000,
-        temperature: float = 0.7,
+        temperature: float = 0.2,
         **kwargs
     ) -> str:
         """Generate structured output using any model through OpenRouter."""
@@ -61,14 +61,13 @@ Rules:
             "temperature": temperature
         }
         
-        # Add any additional parameters
-        for key in ["top_p", "frequency_penalty", "presence_penalty", "seed", "reasoning_effort", "verbosity"]:
-            if key in kwargs:
-                data[key] = kwargs[key]
+        # Add any additional parameters verbatim from kwargs
+        for k, v in kwargs.items():
+            data[k] = v
         
-        # Some models support JSON mode
-        if self._supports_json_mode(model):
-            data["response_format"] = {"type": "json_object"}
+        # Forward structured outputs only if provided; no capability checks or fallbacks
+        if "response_format" in data:
+            pass
         
         response = requests.post(
             f"{self.base_url}/chat/completions",
@@ -118,6 +117,7 @@ Rules:
         json_capable = [
             "openai/gpt-4",
             "openai/gpt-3.5",
+            "openai/gpt-5",
             "anthropic/claude-3",
             "google/gemini",
             "mistralai/mistral-large",
@@ -125,3 +125,13 @@ Rules:
         ]
         
         return any(model.startswith(prefix) for prefix in json_capable)
+
+    def _supports_structured_outputs(self, model: str) -> bool:
+        """Check if model supports JSON Schema structured outputs per OpenRouter docs."""
+        # Be conservative: enable for OpenAI GPT-4o/5 and Fireworks-provided models, extend as needed
+        structured_capable_prefixes = [
+            "openai/gpt-4o",
+            "openai/gpt-5",
+            "fireworks/",
+        ]
+        return any(model.startswith(prefix) for prefix in structured_capable_prefixes)
