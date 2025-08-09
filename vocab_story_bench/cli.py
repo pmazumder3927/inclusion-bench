@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.markdown import Markdown
 from rich.prompt import Prompt, Confirm
 from rich import print as rprint
+from rich.text import Text
 from dotenv import load_dotenv
 
 from .model_spec import ModelSpec
@@ -30,14 +31,10 @@ ALL_LANGUAGES = ["en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ko", "ar
 
 
 def print_banner():
-    """Display a beautiful banner."""
-    banner = Panel.fit(
-        "[bold cyan]🎯 Vocabulary Inclusion Benchmark[/bold cyan]\n"
-        "[dim]Test language models with vocabulary constraints[/dim]",
-        border_style="blue",
-        padding=(1, 2)
-    )
-    console.print(banner)
+    """Display a minimal banner."""
+    console.print()
+    console.print("[bold #ff6b3d]vocab[/bold #ff6b3d][bold white]-bench[/bold white]", style="bold")
+    console.print("[#71717a]vocabulary inclusion benchmark[/#71717a]")
     console.print()
 
 
@@ -46,7 +43,7 @@ def load_vocabulary(language: str, size: int, data_dir: str = "data/vocab") -> L
     vocab_path = Path(data_dir) / "top" / f"{language}_top{size}.txt"
     if not vocab_path.exists():
         # Try to fetch it
-        console.print(f"[yellow]Vocabulary file not found, fetching {language} top {size}...[/yellow]")
+        console.print(f"[#71717a]fetching {language} top {size}...[/#71717a]")
         ensure_top_n_for_lang(language, size, data_dir)
     
     with open(vocab_path, "r", encoding="utf-8") as f:
@@ -76,58 +73,56 @@ def interactive_mode():
     print_banner()
     
     # Language selection
-    console.print("[bold yellow]Step 1: Select Languages[/bold yellow]")
-    console.print(f"Available languages: {', '.join(ALL_LANGUAGES)}")
-    console.print("Enter 'all' to select all languages")
+    console.print("\n[bold #ff6b3d]→ Languages[/bold #ff6b3d]")
+    console.print(f"[#71717a]available: {', '.join(ALL_LANGUAGES)} (or 'all')[/#71717a]")
     languages_input = Prompt.ask(
-        "Enter languages (space-separated)",
+        "[#71717a]languages[/#71717a]",
         default="en es fr"
     )
     
     if languages_input.lower() == "all":
         languages = ALL_LANGUAGES.copy()
-        console.print(f"✅ Selected all {len(languages)} languages\n")
+        console.print(f"[#71717a]selected: all ({len(languages)} languages)[/#71717a]\n")
     else:
         languages = languages_input.split()
-        console.print(f"✅ Selected languages: {', '.join(languages)}\n")
+        console.print(f"[#71717a]selected: {', '.join(languages)}[/#71717a]\n")
     
     # Vocabulary sizes
-    console.print("[bold yellow]Step 2: Select Vocabulary Sizes[/bold yellow]")
-    console.print("[dim]Available sizes: 1000, 2000, 3000, 4000, 5000[/dim]")
+    console.print("\n[bold #4a9eff]→ Vocabulary Sizes[/bold #4a9eff]")
+    console.print("[#71717a]options: 1000, 2000, 3000, 4000, 5000[/#71717a]")
     sizes_input = Prompt.ask(
-        "Enter vocabulary sizes (space-separated)",
+        "[#71717a]sizes[/#71717a]",
         default="1000 2000 3000"
     )
     vocab_sizes = [int(s) for s in sizes_input.split()]
-    console.print(f"✅ Selected sizes: {', '.join(map(str, vocab_sizes))}\n")
+    console.print(f"[#71717a]selected: {', '.join(map(str, vocab_sizes))}[/#71717a]\n")
     
     # Model selection
-    console.print("[bold yellow]Step 3: Select Models[/bold yellow]")
-    console.print("Options:")
-    console.print("  1. Use predefined models from config file")
-    console.print("  2. Enter models manually")
+    console.print("\n[bold #7c77c6]→ Models[/bold #7c77c6]")
+    console.print("[#71717a]1. use config file[/#71717a]")
+    console.print("[#71717a]2. enter manually[/#71717a]")
     
-    model_choice = Prompt.ask("Choose option", choices=["1", "2"])
+    model_choice = Prompt.ask("[#71717a]choice[/#71717a]", choices=["1", "2"])
     
     models = []
     if model_choice == "1":
-        config_path = Prompt.ask("Enter config file path", default="configs/models.yaml")
+        config_path = Prompt.ask("[#71717a]config path[/#71717a]", default="configs/models.yaml")
         models = load_models_from_yaml(config_path)
     else:
-        console.print("Enter models in OpenRouter format (e.g., 'openai/gpt-4o' or 'qwen/qwq-32b:free')\nOne per line, empty line to finish:")
+        console.print("[#71717a]enter models (openrouter format, empty line to finish):[/#71717a]")
         while True:
-            model_input = Prompt.ask("Model (or press Enter to finish)", default="")
+            model_input = Prompt.ask("[#71717a]model[/#71717a]", default="")
             if not model_input:
                 break
             models.append(ModelSpec.parse_inline(model_input))
     
-    console.print(f"✅ Selected {len(models)} models\n")
+    console.print(f"[#71717a]{len(models)} models loaded[/#71717a]\n")
     
     # Target words configuration
-    console.print("[bold yellow]Step 4: Configure Target Words[/bold yellow]")
-    console.print("Target words will be automatically selected from each language's vocabulary")
+    console.print("\n[bold #ff375f]→ Target Words[/bold #ff375f]")
+    console.print("[#71717a]auto-selected from each language's vocabulary[/#71717a]")
     
-    num_targets = Prompt.ask("Number of target words per language", default="5")
+    num_targets = Prompt.ask("[#71717a]target words per language[/#71717a]", default="5")
     # Basic bounds to keep prompts reasonable
     try:
         num_targets = int(num_targets)
@@ -137,45 +132,50 @@ def interactive_mode():
         num_targets = 1
     if num_targets > 10:
         num_targets = 10
-    use_custom_targets = Confirm.ask("Do you want to specify custom targets for any language?", default=False)
+    use_custom_targets = Confirm.ask("[#71717a]custom targets?[/#71717a]", default=False)
     
     target_words = {}
     
     # First, set up automatic targets for all languages
-    console.print("\n[dim]Selecting random target words from vocabularies...[/dim]")
+    console.print("\n[#71717a]Selecting random target words from vocabularies...[/#71717a]")
     for lang in languages:
         try:
             # Load the smallest vocabulary size to select targets from
             vocab = load_vocabulary(lang, vocab_sizes[0])
             targets = select_random_targets(vocab, num_targets, seed=42)  # Use seed for reproducibility
             target_words[lang] = targets
-            console.print(f"  {lang}: {', '.join(targets)}")
+            console.print(f"  [#71717a]{lang}:[/#71717a] {', '.join(targets)}")
         except Exception as e:
-            console.print(f"  [red]Error loading vocabulary for {lang}: {e}[/red]")
+            console.print(f"  [#71717a]error: {lang} - {e}[/#71717a]")
             target_words[lang] = []
     
     # Allow custom overrides if requested
     if use_custom_targets:
-        console.print("\n[yellow]Enter custom targets (or press Enter to keep automatic selection):[/yellow]")
+        console.print("\n[#71717a]enter custom targets (or press enter to keep):[/#71717a]")
         for lang in languages:
             current = ', '.join(target_words.get(lang, []))
-            custom = Prompt.ask(f"Targets for {lang}", default=current)
+            custom = Prompt.ask(f"[#71717a]{lang} targets[/#71717a]", default=current)
             if custom:
                 target_words[lang] = custom.split(', ') if ', ' in custom else custom.split()
     
-    console.print(f"\n✅ Configured target words for {len(languages)} languages\n")
+    console.print(f"\n[#71717a]configured {len(languages)} languages[/#71717a]\n")
     
     # Additional settings
-    console.print("[bold yellow]Step 5: Additional Settings[/bold yellow]")
-    trials = int(Prompt.ask("Trials per model", default="3"))
-    story_length = int(Prompt.ask("Approximate story length (words)", default="150"))
-    max_parallel = int(Prompt.ask("Max parallel models", default="8"))
+    console.print("\n[bold #ffd60a]→ Settings[/bold #ffd60a]")
+    trials = int(Prompt.ask("[#71717a]trials per model[/#71717a]", default="3"))
+    story_length = int(Prompt.ask("[#71717a]story length (words)[/#71717a]", default="150"))
+    max_parallel = int(Prompt.ask("[#71717a]max parallel[/#71717a]", default="8"))
     
     # Confirm settings
-    console.print("\n[bold green]Configuration Summary:[/bold green]")
-    summary_table = Table(show_header=False, box=None)
-    summary_table.add_column("Setting", style="cyan")
-    summary_table.add_column("Value", style="yellow")
+    console.print("\n[bold #30d158]→ Summary[/bold #30d158]")
+    
+    summary_table = Table(
+        show_header=False,
+        box=None,
+        padding=(0, 1)
+    )
+    summary_table.add_column("Setting", style="#71717a")
+    summary_table.add_column("Value", style="white")
     
     summary_table.add_row("Languages", f"{len(languages)} languages")
     summary_table.add_row("Vocabulary Sizes", ", ".join(map(str, vocab_sizes)))
@@ -188,8 +188,8 @@ def interactive_mode():
     console.print(summary_table)
     console.print()
     
-    if not Confirm.ask("Run benchmark with these settings?", default=True):
-        console.print("[red]Benchmark cancelled.[/red]")
+    if not Confirm.ask("[#71717a]run?[/#71717a]", default=True):
+        console.print("[#71717a]cancelled[/#71717a]")
         return
     
     # Run benchmark
@@ -211,10 +211,10 @@ def run_benchmark_with_config(
     output_dir: Path | str = Path("outputs"),
 ):
     """Run the benchmark with the given configuration."""
-    console.print("\n[bold blue]🚀 Starting Benchmark[/bold blue]\n")
+    console.print("\n[bold #4a9eff]→ Starting benchmark...[/bold #4a9eff]\n")
     
     # Ensure vocabulary data exists and load vocabularies
-    console.print("[dim]Checking vocabulary data...[/dim]")
+    console.print("[#71717a]Checking vocabulary data...[/#71717a]")
     vocabularies = {}
     for lang in languages:
         vocabularies[lang] = {}
@@ -224,7 +224,7 @@ def run_benchmark_with_config(
                 vocab = load_vocabulary(lang, size)
                 vocabularies[lang][size] = vocab
             except Exception as e:
-                console.print(f"[red]Error fetching vocabulary for {lang} top {size}: {e}[/red]")
+                console.print(f"[#71717a]error fetching {lang} top {size}: {e}[/#71717a]")
                 return
     
     # Run benchmark
@@ -241,8 +241,8 @@ def run_benchmark_with_config(
     )
     
     # Display completion message
-    console.print("\n[bold green]✅ Benchmark Complete![/bold green]")
-    console.print(f"Results saved to: {results}")
+    console.print("\n[bold #30d158]✓ Complete[/bold #30d158]")
+    console.print(f"[#71717a]results:[/#71717a] {results}")
 
 
 def load_models_from_yaml(path: str) -> List[ModelSpec]:
@@ -359,23 +359,23 @@ def main():
     if args.command == "fetch":
         langs = args.langs
         if not langs:
-            console.print("[red]Error: --langs is required for fetch command[/red]")
+            console.print("[#71717a]error: --langs required[/#71717a]")
             sys.exit(1)
         
         if langs == ["all"]:
             langs = ALL_LANGUAGES
             
-        console.print(f"[cyan]Fetching vocabulary data for {len(langs)} language(s)...[/cyan]")
+        console.print(f"[#71717a]fetching {len(langs)} languages...[/#71717a]")
         out_paths = []
         for lang in langs:
             try:
                 p = ensure_top_n_for_lang(lang, args.top, args.data_dir)
                 out_paths.append(str(p))
-                console.print(f"  ✅ {lang}: {p}")
+                console.print(f"  [#71717a]{lang}:[/#71717a] {p}")
             except Exception as e:
-                console.print(f"  ❌ {lang}: {e}")
+                console.print(f"  [#71717a]error {lang}:[/#71717a] {e}")
         
-        console.print(f"\n[green]Completed fetching {len(out_paths)} vocabulary files[/green]")
+        console.print(f"\n[#71717a]fetched {len(out_paths)} files[/#71717a]")
         return
     if args.command == "viz":
         # Create dashboard from a JSONL file
@@ -383,9 +383,9 @@ def main():
             out_file = args.out
             out_file.parent.mkdir(parents=True, exist_ok=True)
             create_dashboard_from_jsonl(args.details, out_file)
-            console.print(f"\n[bold green]📊 Dashboard generated:[/bold green] {out_file}")
+            console.print(f"\n[#71717a]dashboard:[/#71717a] {out_file}")
         except Exception as e:
-            console.print(f"[red]Failed to generate dashboard:[/red] {e}")
+            console.print(f"[#71717a]error:[/#71717a] {e}")
         return
     
     # If interactive mode or no arguments provided
@@ -394,15 +394,15 @@ def main():
     elif args.command == "run":
         # Command-line mode
         if not args.languages:
-            console.print("[red]Error: --languages is required[/red]")
+            console.print("[#71717a]error: --languages required[/#71717a]")
             sys.exit(1)
         
         if not args.vocab_sizes:
-            console.print("[red]Error: --vocab-sizes is required[/red]")
+            console.print("[#71717a]error: --vocab-sizes required[/#71717a]")
             sys.exit(1)
         
         if not args.models_config:
-            console.print("[red]Error: --models-config is required[/red]")
+            console.print("[#71717a]error: --models-config required[/#71717a]")
             sys.exit(1)
         
         # Handle "all" languages
@@ -414,16 +414,16 @@ def main():
         models = load_models_from_yaml(args.models_config)
         
         # Set up target words - automatically select from vocabulary
-        console.print(f"\n[cyan]Selecting {args.num_targets} target words for each language...[/cyan]")
+        console.print(f"\n[#71717a]selecting {args.num_targets} target words...[/#71717a]")
         target_words = {}
         for lang in languages:
             try:
                 vocab = load_vocabulary(lang, args.vocab_sizes[0])
                 targets = select_random_targets(vocab, args.num_targets, seed=42)
                 target_words[lang] = targets
-                console.print(f"  {lang}: {', '.join(targets)}")
+                console.print(f"  [#7c77c6]{lang}:[/#7c77c6] {', '.join(targets)}")
             except Exception as e:
-                console.print(f"  [red]Error with {lang}: {e}[/red]")
+                console.print(f"  [#71717a]error {lang}:[/#71717a] {e}")
                 target_words[lang] = []
         
         # Run benchmark
@@ -445,5 +445,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
