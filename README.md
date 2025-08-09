@@ -1,5 +1,5 @@
 # vocab-bench
-
+![results](https://github.com/pmazumder3927/inclusion-bench/blob/master/examples/results.png)
 benchmark language models on vocabulary-constrained generation. models output structured json word arrays for precise validation.
 
 ## setup
