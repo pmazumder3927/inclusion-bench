@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Any
 from threading import Lock
 import hashlib
+import unicodedata
+import string
 
 from rich.console import Console
 from rich.table import Table
@@ -93,10 +95,43 @@ class ParallelBenchmarkRunner:
         total_words = len(words)
         lower_words = [w.lower() for w in words]
         unique_words = len(set(lower_words))
-        only_vocab = all(w in vocabulary for w in lower_words)
 
-        # Find OOV details
-        oov_indices = [i for i, w in enumerate(lower_words) if w not in vocabulary]
+        # Helper: determine if a token is pure punctuation (ignore for OOV/compliance)
+        def is_punctuation_only(token: str) -> bool:
+            if token is None:
+                return True
+            if not isinstance(token, str):
+                token = str(token)
+            if token.strip() == "":
+                return True
+            # A token is punctuation-only if every char is punctuation or whitespace
+            for ch in token:
+                # Fast-path ASCII punctuation
+                if ch in string.punctuation:
+                    continue
+                # Unicode whitespace is ignorable
+                if ch.isspace():
+                    continue
+                # Unicode punctuation categories start with 'P'
+                if unicodedata.category(ch).startswith('P'):
+                    continue
+                # Any other character means it's not punctuation-only
+                return False
+            return True
+
+        # Build filtered view with indices preserved
+        content_indices_and_words = [
+            (idx, w) for idx, w in enumerate(lower_words) if not is_punctuation_only(w)
+        ]
+        content_words = [w for _, w in content_indices_and_words]
+        total_words_no_punct = len(content_words)
+        unique_words_no_punct = len(set(content_words))
+
+        # Compliance considers only content words (punctuation ignored)
+        only_vocab = all(w in vocabulary for w in content_words)
+
+        # Find OOV details (relative to original indices, ignoring punctuation tokens)
+        oov_indices = [i for i, w in enumerate(lower_words) if (not is_punctuation_only(w)) and (w not in vocabulary)]
         oov_words = sorted(list({lower_words[i] for i in oov_indices}))
 
         # Target details (substring match to align with existing logic)
@@ -112,11 +147,17 @@ class ParallelBenchmarkRunner:
         ) if targets else True
 
         # Coverage and diversity
-        vocab_overlap = len(set(lower_words) & vocabulary)
+        vocab_overlap = len(set(content_words) & vocabulary)
         vocabulary_coverage = (vocab_overlap / len(vocabulary)) if vocabulary else 0.0
-        percent_in_vocab = (sum(1 for w in lower_words if w in vocabulary) / total_words) if total_words > 0 else 0.0
+        percent_in_vocab = (
+            (sum(1 for w in content_words if w in vocabulary) / total_words_no_punct)
+            if total_words_no_punct > 0 else 0.0
+        )
         targets_present_ratio = (len(target_positions) / len(targets)) if targets else 1.0
         type_token_ratio = (unique_words / total_words) if total_words > 0 else 0.0
+        type_token_ratio_no_punct = (
+            (unique_words_no_punct / total_words_no_punct) if total_words_no_punct > 0 else 0.0
+        )
 
         # Repetition metrics
         max_repeat_run = 0
@@ -143,6 +184,10 @@ class ParallelBenchmarkRunner:
             "total_words": total_words,
             "unique_words": unique_words,
             "type_token_ratio": type_token_ratio,
+            # Additional metrics with punctuation removed
+            "total_words_no_punct": total_words_no_punct,
+            "unique_words_no_punct": unique_words_no_punct,
+            "type_token_ratio_no_punct": type_token_ratio_no_punct,
             "only_vocab": only_vocab,
             "percent_in_vocab": percent_in_vocab,
             "oov_words": oov_words,
