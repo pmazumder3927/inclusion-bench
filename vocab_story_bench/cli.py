@@ -22,6 +22,11 @@ from .model_spec import ModelSpec
 from .parallel_runner import ParallelBenchmarkRunner
 from .data_fetch import ensure_top_n_for_lang
 from .visualizations import create_dashboard_from_jsonl
+from .reports import append_jsonl, ensure_dir
+import datetime as dt
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict
+import json
 
 
 console = Console()
@@ -345,6 +350,14 @@ def main():
     viz = subparsers.add_parser("viz", help="Generate dashboard HTML from a details.jsonl file")
     viz.add_argument("details", type=Path, help="Path to details.jsonl")
     viz.add_argument("--out", type=Path, default=Path("dashboard.html"), help="Output HTML file path")
+
+    # Rerun-failed command: detect previous runs and re-run empty outputs
+    rerun = subparsers.add_parser("rerun-failed", help="Rerun rows with empty words arrays and merge results")
+    rerun.add_argument("details", type=Path, help="Path to existing details.jsonl")
+    rerun.add_argument("--data-dir", type=Path, default=Path("data/vocab"), help="Vocabulary data directory")
+    rerun.add_argument("--parallel", type=int, default=8, help="Max parallel reruns")
+    rerun.add_argument("--out-dir", type=Path, default=None, help="Output dir for rerun artifacts (default: alongside details)")
+    rerun.add_argument("--dry-run", action="store_true", help="Only detect and report failed rows; do not rerun")
     
     # Also add --interactive at top level for backward compatibility
     parser.add_argument(
@@ -386,6 +399,151 @@ def main():
             console.print(f"\n[#71717a]dashboard:[/#71717a] {out_file}")
         except Exception as e:
             console.print(f"[#71717a]error:[/#71717a] {e}")
+        return
+    if args.command == "rerun-failed":
+        details_path: Path = args.details
+        if not details_path.exists():
+            console.print(f"[#71717a]error: details not found[/#71717a] {details_path}")
+            sys.exit(1)
+
+        # Prepare output directories
+        base_out = args.out_dir or details_path.parent
+        timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        rerun_dir = Path(base_out) / f"rerun_{timestamp}"
+        ensure_dir(rerun_dir)
+        rerun_details = rerun_dir / "details.jsonl"
+
+        # Identify failed entries (empty words arrays) and build tasks
+        console.print("[#71717a]Scanning for empty outputs...[/#71717a]")
+        def is_empty_words_field(words) -> bool:
+            # Treat None, missing, empty list, or empty string as empty
+            if words is None:
+                return True
+            if isinstance(words, list):
+                return len(words) == 0
+            if isinstance(words, str):
+                return len(words.strip()) == 0
+            return False
+
+        tasks = []
+        with details_path.open("r", encoding="utf-8") as f:
+            for raw in f:
+                line = (raw or "").strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                words = d.get("words")
+                if is_empty_words_field(words):
+                    tasks.append(d)
+
+        if not tasks:
+            console.print("[#71717a]No empty rows found. Nothing to rerun.[/#71717a]")
+            return
+
+        console.print(f"[#71717a]Found {len(tasks)} rows to rerun[/#71717a]")
+
+        if args.dry_run:
+            console.print("[#71717a]Dry run: exiting without rerun[/#71717a]")
+            return
+
+        # Run reruns in parallel
+        runner = ParallelBenchmarkRunner(output_dir=str(rerun_dir))
+        ensure_dir(rerun_dir)
+
+        def do_rerun(row: dict) -> dict:
+            language = row.get("language")
+            vocab_size = int(row.get("vocab_size"))
+            story_length = int(row.get("story_length", 150))
+            targets = row.get("targets", [])
+            model_id = row.get("model")
+            model_label = row.get("model_label") or row.get("model")
+            model_params = row.get("model_params") or {}
+            trial_index = int(row.get("trial_index", 0))
+
+            vocabulary = load_vocabulary(language, vocab_size)
+            model_spec = ModelSpec(model=model_id, label=model_label, params=model_params)
+            result = runner.run_single_trial(
+                model_spec=model_spec,
+                language=language,
+                vocabulary=vocabulary,
+                targets=targets,
+                vocab_size=vocab_size,
+                trial_index=trial_index,
+                story_length=story_length,
+            )
+            return result
+
+        successes = 0
+        failures = 0
+        with ThreadPoolExecutor(max_workers=args.parallel) as ex:
+            futures = {ex.submit(do_rerun, row): row for row in tasks}
+            for fut in as_completed(futures):
+                try:
+                    res = fut.result()
+                    append_jsonl(rerun_details, asdict(res))
+                    if res.success and isinstance(res.words, list) and len(res.words) > 0:
+                        successes += 1
+                    else:
+                        failures += 1
+                except Exception:
+                    failures += 1
+
+        console.print(f"[#71717a]Rerun completed: {successes} succeeded, {failures} failed[/#71717a]")
+
+        # Merge back into original to produce a merged file
+        merged_path = rerun_dir / "details_merged.jsonl"
+        # Load reruns into lookup
+        lookup = {}
+        with rerun_details.open("r", encoding="utf-8") as f:
+            for raw in f:
+                line = (raw or "").strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(d.get("words"), list) and len(d.get("words")) > 0:
+                    key = (
+                        d.get("model"),
+                        d.get("model_label"),
+                        d.get("language"),
+                        d.get("vocab_size"),
+                        d.get("trial_index", 0),
+                    )
+                    lookup[key] = d
+
+        replaced = 0
+        kept = 0
+        with details_path.open("r", encoding="utf-8") as fin, merged_path.open("w", encoding="utf-8") as fout:
+            for raw in fin:
+                line = (raw or "").strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                key = (
+                    d.get("model"),
+                    d.get("model_label"),
+                    d.get("language"),
+                    d.get("vocab_size"),
+                    d.get("trial_index", 0),
+                )
+                words = d.get("words")
+                if is_empty_words_field(words) and key in lookup:
+                    fout.write(json.dumps(lookup[key], ensure_ascii=False) + "\n")
+                    replaced += 1
+                else:
+                    fout.write(json.dumps(d, ensure_ascii=False) + "\n")
+                    kept += 1
+
+        console.print(f"[#71717a]Merged file:[/#71717a] {merged_path}")
+        console.print(f"[#71717a]Replaced {replaced} entries; kept {kept} entries[/#71717a]")
         return
     
     # If interactive mode or no arguments provided

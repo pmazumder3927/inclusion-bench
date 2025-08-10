@@ -24,6 +24,7 @@ def _results_to_dataframe(results: List[Any]) -> pd.DataFrame:
                 success = r.get("success", False)
                 validation = r.get("validation", {}) or {}
                 exec_time = r.get("execution_time")
+                words_field = r.get("words")
             else:
                 model = getattr(r, "model_label", None) or getattr(r, "model", None)
                 lang = getattr(r, "language", None)
@@ -31,6 +32,10 @@ def _results_to_dataframe(results: List[Any]) -> pd.DataFrame:
                 success = getattr(r, "success", False)
                 validation = getattr(r, "validation", {}) or {}
                 exec_time = getattr(r, "execution_time", None)
+                words_field = getattr(r, "words", None)
+            # Exclude entries with empty words arrays from visualization
+            if isinstance(words_field, list) and len(words_field) == 0:
+                continue
             pass_flag = bool(validation.get("pass") or (validation.get("only_vocab") and validation.get("all_targets_present")))
             coverage = validation.get("vocabulary_coverage")
             words = validation.get("total_words")
