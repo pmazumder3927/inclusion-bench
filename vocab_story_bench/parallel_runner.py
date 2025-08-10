@@ -119,31 +119,58 @@ class ParallelBenchmarkRunner:
                 return False
             return True
 
+        # Helper: normalize a token by removing all punctuation characters
+        def normalize_token(token: str) -> str:
+            if token is None:
+                return ""
+            if not isinstance(token, str):
+                token = str(token)
+            token = token.strip()
+            if token == "":
+                return ""
+            # Remove any Unicode punctuation characters entirely
+            cleaned_chars: List[str] = []
+            for ch in token:
+                if ch in string.punctuation:
+                    continue
+                if unicodedata.category(ch).startswith('P'):
+                    continue
+                cleaned_chars.append(ch)
+            return "".join(cleaned_chars)
+
         # Build filtered view with indices preserved
-        content_indices_and_words = [
-            (idx, w) for idx, w in enumerate(lower_words) if not is_punctuation_only(w)
-        ]
-        content_words = [w for _, w in content_indices_and_words]
+        # Build normalized, content-only list preserving original indices for OOV mapping
+        normalized_by_index: List[Tuple[int, str]] = []
+        for idx, w in enumerate(lower_words):
+            if is_punctuation_only(w):
+                continue
+            normalized = normalize_token(w)
+            if normalized == "":
+                # token became empty after stripping punctuation, ignore
+                continue
+            normalized_by_index.append((idx, normalized))
+
+        content_words = [w for _, w in normalized_by_index]
         total_words_no_punct = len(content_words)
         unique_words_no_punct = len(set(content_words))
 
         # Compliance considers only content words (punctuation ignored)
         only_vocab = all(w in vocabulary for w in content_words)
 
-        # Find OOV details (relative to original indices, ignoring punctuation tokens)
-        oov_indices = [i for i, w in enumerate(lower_words) if (not is_punctuation_only(w)) and (w not in vocabulary)]
-        oov_words = sorted(list({lower_words[i] for i in oov_indices}))
+        # Find OOV details on normalized content (map back to original indices)
+        oov_indices = [idx for (idx, w) in normalized_by_index if w not in vocabulary]
+        oov_words = sorted(list({w for (_, w) in normalized_by_index if w not in vocabulary}))
 
         # Target details (substring match to align with existing logic)
         target_positions: Dict[str, List[int]] = {}
         for t in targets:
-            t_lower = t.lower()
-            positions = [i for i, w in enumerate(lower_words) if t_lower in w]
+            t_lower = normalize_token(t.lower())
+            positions = [i for i, w in normalized_by_index if t_lower in w]
             if positions:
                 target_positions[t] = positions
 
         all_targets_present = all(
-            any(t.lower() in w for w in lower_words) for t in targets
+            any(normalize_token(t.lower()) in w for (_, w) in normalized_by_index) for t in targets
         ) if targets else True
 
         # Coverage and diversity
