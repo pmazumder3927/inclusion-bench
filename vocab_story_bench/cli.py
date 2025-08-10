@@ -27,7 +27,7 @@ from .visualizations import create_dashboard_from_jsonl
 console = Console()
 
 # All supported languages
-ALL_LANGUAGES = ["en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ko", "ar", "hi"]
+ALL_LANGUAGES = ["en", "es", "fr", "de", "it", "pt", "ru", "zh_cn", "ja", "ko", "ar", "hi"]
 
 
 def print_banner():
